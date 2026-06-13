@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SwaramPay — Guardian Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      color: #fff;
+      padding: 2rem 1rem;
+    }
+    header {
+      max-width: 900px; margin: 0 auto 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { color: #e2b96f; font-size: 1.5rem; }
+    header p { color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-top: 0.2rem; }
+    .grid { max-width: 900px; margin: 0 auto; display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+    .wallet-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 1.5rem;
+      backdrop-filter: blur(8px);
+    }
+    .wallet-card h2 { font-size: 1.1rem; color: #e2b96f; margin-bottom: 0.2rem; }
+    .wallet-card .phone { color: rgba(255,255,255,0.45); font-size: 0.8rem; margin-bottom: 1rem; }
+    .balance { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; }
+    .balance span { font-size: 0.9rem; color: rgba(255,255,255,0.5); font-weight: 400; }
+    .section-title { font-size: 0.75rem; color: rgba(255,255,255,0.4);
+                     text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .tx-list { list-style: none; margin-bottom: 1.2rem; }
+    .tx-list li {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.85rem; color: rgba(255,255,255,0.6);
+    }
+    .tx-list li .amt { color: #4ade80; font-weight: 600; }
+    .tx-list li .debit { color: #f87171; }
+    .topup { display: flex; gap: 0.5rem; }
+    .topup input {
+      flex: 1; padding: 0.6rem 0.8rem; background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+      color: #fff; font-size: 0.9rem; outline: none;
+    }
+    .topup input:focus { border-color: #e2b96f; }
+    .topup button {
+      padding: 0.6rem 1.1rem; background: linear-gradient(90deg, #e2b96f, #c8962c);
+      border: none; border-radius: 8px; color: #1a1a2e;
+      font-weight: 700; cursor: pointer; font-size: 0.9rem; white-space: nowrap;
+    }
+    .topup button:hover { opacity: 0.9; }
+    .status-msg { font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2em; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .empty-state { max-width: 900px; margin: 4rem auto; text-align: center; color: rgba(255,255,255,0.4); }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🔐 SwaramPay Guardian Portal</h1>
+    <p>Manage wallets you are responsible for</p>
+  </div>
+</header>
+
+{% if wallets %}
+<div class="grid">
+  {% for wallet in wallets %}
+  <div class="wallet-card">
+    <h2>{{ wallet.name }}</h2>
+    <p class="phone">📱 {{ wallet.phone }}</p>
+
+    <p class="section-title">Current Balance</p>
+    <p class="balance">₹{{ "%.2f"|format(wallet.balance) }} <span>INR</span></p>
+
+    <p class="section-title">Recent Transactions</p>
+    <ul class="tx-list">
+      {% if wallet.recent %}
+        {% for tx in wallet.recent|reverse %}
+        <li>
+          <span>{{ tx.desc }} — {{ tx.timestamp[:10] }}</span>
+          <span class="{{ 'debit' if tx.type == 'debit' else 'amt' }}">
+            {{ '-' if tx.type == 'debit' else '+' }}₹{{ tx.amount }}
+          </span>
+        </li>
+        {% endfor %}
+      {% else %}
+        <li><span>No transactions yet</span></li>
+      {% endif %}
+    </ul>
+
+    <p class="section-title">Add Money</p>
+    <div class="topup">
+      <input type="number" min="1" max="50000" placeholder="Amount (₹)"
+             id="amt-{{ wallet.phone }}" onkeydown="if(event.key==='Enter')topUp('{{ wallet.phone }}')"/>
+      <button onclick="topUp('{{ wallet.phone }}')">Add ₹</button>
+    </div>
+    <p class="status-msg" id="status-{{ wallet.phone }}"></p>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p style="font-size:3rem">🌾</p>
+  <p style="margin-top:1rem">No wallets linked yet.</p>
+  <p style="margin-top:0.5rem;font-size:0.9rem">Ask your ward to add you as a guardian during their SwaramPay registration call.</p>
+</div>
+{% endif %}
+
+<script>
+async function topUp(phone) {
+  const amtInput = document.getElementById('amt-' + phone);
+  const statusEl = document.getElementById('status-' + phone);
+  const amount = parseFloat(amtInput.value);
+  if (!amount || amount <= 0 || amount > 50000) {
+    statusEl.textContent = 'Enter a valid amount (₹1 – ₹50,000).';
+    statusEl.className = 'status-msg error';
+    return;
+  }
+  statusEl.textContent = 'Processing…';
+  statusEl.className = 'status-msg';
+  const formData = new FormData();
+  formData.append('target_phone', phone);
+  formData.append('amount', amount);
+  const res = await fetch('/companion/add-money', { method: 'POST', body: formData });
+  const data = await res.json();
+  if (data.status === 'success') {
+    statusEl.textContent = `✅ ₹${amount} added! New balance: ₹${data.new_balance.toFixed(2)}`;
+    statusEl.className = 'status-msg success';
+    amtInput.value = '';
+    setTimeout(() => location.reload(), 2000);
+  } else {
+    statusEl.textContent = '❌ ' + (data.error || 'Failed');
+    statusEl.className = 'status-msg error';
+  }
+}
+</script>
+</body>
+</html>

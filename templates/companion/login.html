@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SwaramPay Guardian Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 420px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .logo { text-align: center; margin-bottom: 2rem; }
+    .logo h1 { color: #e2b96f; font-size: 1.8rem; font-weight: 700; }
+    .logo p { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-top: 0.3rem; }
+    label { color: rgba(255,255,255,0.7); font-size: 0.85rem; display: block; margin-bottom: 0.4rem; }
+    input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #e2b96f; }
+    .field { margin-bottom: 1.2rem; }
+    .btn {
+      width: 100%;
+      padding: 0.85rem;
+      background: linear-gradient(90deg, #e2b96f, #c8962c);
+      border: none;
+      border-radius: 8px;
+      color: #1a1a2e;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #e2b96f;
+      color: #e2b96f;
+      margin-bottom: 0.8rem;
+    }
+    .otp-row { display: none; margin-top: 1rem; }
+    .error { background: rgba(220,53,69,0.2); border: 1px solid #dc3545; color: #f8a6ae;
+             padding: 0.6rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+    .info { color: rgba(255,255,255,0.45); font-size: 0.8rem; text-align: center; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>🔐 SwaramPay</h1>
+    <p>Guardian Companion Portal</p>
+  </div>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <div class="field">
+    <label>Your 10-digit Mobile Number</label>
+    <input type="tel" id="phone" maxlength="10" placeholder="98xxxxxxxx" autocomplete="tel"/>
+  </div>
+
+  <button class="btn btn-outline" onclick="sendOTP()">Send OTP via SMS</button>
+
+  <div class="otp-row" id="otp-row">
+    <form method="POST" action="/companion/verify-otp">
+      <div class="field">
+        <label>Enter OTP</label>
+        <input type="text" name="otp" id="otp" maxlength="6" placeholder="6-digit OTP" autocomplete="one-time-code"/>
+        <input type="hidden" name="phone" id="phone-hidden"/>
+      </div>
+      <button type="submit" class="btn">Verify &amp; Login</button>
+    </form>
+  </div>
+
+  <p class="info">Only registered guardians can log in. Contact your ward to be added as a guardian.</p>
+</div>
+
+<script>
+  async function sendOTP() {
+    const phone = document.getElementById('phone').value.trim();
+    if (phone.length !== 10 || !/^\d+$/.test(phone)) {
+      alert('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('phone', phone);
+    const res = await fetch('/companion/send-otp', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.status === 'sent') {
+      document.getElementById('otp-row').style.display = 'block';
+      document.getElementById('phone-hidden').value = phone;
+      alert('OTP sent! Check your SMS.');
+    } else {
+      alert(data.error || 'Failed to send OTP.');
+    }
+  }
+</script>
+</body>
+</html>
