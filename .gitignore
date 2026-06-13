@@ -1,4 +1,5 @@
 .env
+sarvam_api_key.md
 dynamic_audio/
 __pycache__/
 *.pyc

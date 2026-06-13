@@ -18,15 +18,15 @@ SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 
 # Sarvam AI language codes + speaker per language (bulbul:v3 voices)
 LANG_TTS_CONFIG = {
-    "hi": {"target_language_code": "hi-IN", "speaker": "anushka"},
-    "en": {"target_language_code": "en-IN", "speaker": "vidya"},
-    "ta": {"target_language_code": "ta-IN", "speaker": "manisha"},
-    "te": {"target_language_code": "te-IN", "speaker": "anushka"},
-    "kn": {"target_language_code": "kn-IN", "speaker": "manisha"},
-    "ml": {"target_language_code": "ml-IN", "speaker": "arya"},
-    "mr": {"target_language_code": "mr-IN", "speaker": "manisha"},
-    "bn": {"target_language_code": "bn-IN", "speaker": "anushka"},
-    "gu": {"target_language_code": "gu-IN", "speaker": "vidya"},
+    "hi": {"target_language_code": "hi-IN", "speaker": "anand"},
+    "en": {"target_language_code": "en-IN", "speaker": "ritu"},
+    "ta": {"target_language_code": "ta-IN", "speaker": "kavitha"},
+    "te": {"target_language_code": "te-IN", "speaker": "ritu"},
+    "kn": {"target_language_code": "kn-IN", "speaker": "ritu"},
+    "ml": {"target_language_code": "ml-IN", "speaker": "ritu"},
+    "mr": {"target_language_code": "mr-IN", "speaker": "ritu"},
+    "bn": {"target_language_code": "bn-IN", "speaker": "ritu"},
+    "gu": {"target_language_code": "gu-IN", "speaker": "ritu"},
 }
 
 
@@ -45,9 +45,7 @@ def generate_tts(text: str, lang_key: str) -> bytes:
         "inputs": [text],
         "target_language_code": cfg["target_language_code"],
         "speaker": cfg["speaker"],
-        "pitch": 0,
-        "pace": 1.0,
-        "loudness": 1.5,
+        "pace": 0.95,
         "speech_sample_rate": 8000,
         "enable_preprocessing": True,
         "model": "bulbul:v3",

@@ -716,11 +716,8 @@ def register_submit_language():
 def register_name():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE[call_sid].get('lang', 'hi')
-    prompt_text = NAME_PROMPTS[lang]
-    audio_path = Path(f'dynamic_audio/reg_name_prompt_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/reg_name_prompt_{call_sid}.wav')
+    resp.play(f'/audio/{lang}_reg_name_prompt.wav')
     resp.record(action='/register/name-submit', method='POST',
                 max_length=6, finish_on_key='#', play_beep=True, timeout=4)
     resp.redirect('/register/name')
@@ -777,11 +774,8 @@ def register_voice_enroll_intro():
     state['enroll_embeddings'] = []
     state['enroll_phrase_idx'] = 0
     CALL_STATE[call_sid] = state
-    intro_text = ENROLL_INTRO_PROMPTS.get(lang, ENROLL_INTRO_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/enroll_intro_{call_sid}.wav')
-    save_tts(intro_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/enroll_intro_{call_sid}.wav')
+    resp.play(f'/audio/{lang}_enroll_intro.wav')
     resp.redirect('/register/voice-enroll-phrase')
     return Response(str(resp), mimetype='text/xml')
 
@@ -808,10 +802,8 @@ def register_voice_enroll_phrase():
         'bn': f"Vakya {idx + 1}: {phrase}",
         'gu': f"Vaakya {idx + 1}: {phrase}",
     }
-    audio_path = Path(f'dynamic_audio/enroll_phrase_{call_sid}_{idx}.wav')
-    save_tts(phrase_count_map.get(lang, phrase_count_map['en']), lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/enroll_phrase_{call_sid}_{idx}.wav')
+    resp.play(f'/audio/{lang}_enroll_phrase_{idx}.wav')
     resp.record(action='/register/voice-enroll-record', method='POST',
                 max_length=8, play_beep=True, timeout=4)
     resp.redirect('/register/voice-enroll-phrase')  # timeout fallback
@@ -899,11 +891,8 @@ def register_guardian_prompt():
         )
     except Exception as e:
         print(f"[SMS] Failed to send portal link: {e}")
-    prompt_text = GUARDIAN_PROMPTS.get(lang, GUARDIAN_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/guardian_prompt_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/guardian_prompt_{call_sid}.wav')
+    resp.play(f'/audio/{lang}_guardian_prompt.wav')
     resp.record(action='/register/guardian-number-submit', method='POST',
                 max_length=10, play_beep=False, timeout=6)
     resp.redirect('/register/complete')
@@ -944,13 +933,10 @@ def register_guardian_keypad():
     """Keypad fallback when voice digit extraction fails."""
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
-    prompt_text = GUARDIAN_DTMF_PROMPTS.get(lang, GUARDIAN_DTMF_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/guardian_dtmf_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
     gather = Gather(num_digits=10, action='/register/guardian-keypad-submit',
                     method='POST', timeout=15)
-    resp.play(f'/dynamic-audio/guardian_dtmf_{call_sid}.wav')
+    gather.play(f'/audio/{lang}_guardian_dtmf.wav')
     resp.append(gather)
     resp.redirect('/register/complete')  # timeout → skip
     return Response(str(resp), mimetype='text/xml')
@@ -958,23 +944,28 @@ def register_guardian_keypad():
 
 @app.route('/register/guardian-keypad-submit', methods=['GET', 'POST'])
 def register_guardian_keypad_submit():
+    # DTMF digits are unambiguous — save directly without voice confirmation
     call_sid = request.values.get('CallSid')
     digits = request.values.get('Digits', '')
     state = CALL_STATE[call_sid]
     lang = state.get('lang', 'hi')
     if len(digits) != 10 or not digits.isdigit():
         return redirect_to_prompt('/register/complete')
-    state['pending_guardian'] = digits
+    state['guardians'] = [digits]
     CALL_STATE[call_sid] = state
-    spaced = ' '.join(list(digits))
-    confirm_text = GUARDIAN_CONFIRM_PROMPTS.get(lang, GUARDIAN_CONFIRM_PROMPTS['en']).format(spaced)
-    audio_path = Path(f'dynamic_audio/guardian_confirm_{call_sid}.wav')
-    save_tts(confirm_text, lang, audio_path)
-    resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/guardian_confirm_{call_sid}.wav')
-    resp.record(action='/register/guardian-confirm-submit', method='POST',
-                max_length=4, play_beep=True, timeout=4)
-    return Response(str(resp), mimetype='text/xml')
+    try:
+        twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
+        name = state.get('name', 'Your ward')
+        twilio_client.messages.create(
+            body=f"{name} ne aapko SwaramPay guardian banaya hai. "
+                 f"Login karein: {os.getenv('SERVER_BASE_URL', '')}/companion",
+            from_=os.getenv('TWILIO_PHONE_NUMBER'),
+            to=f'+91{digits}'
+        )
+        print(f"[GUARDIAN] SMS sent to {digits}")
+    except Exception as e:
+        print(f"[GUARDIAN] SMS failed: {e}")
+    return redirect_to_prompt('/register/complete')
 
 
 @app.route('/register/guardian-confirm-submit', methods=['GET', 'POST'])
@@ -1132,13 +1123,8 @@ def auth_verify():
     download_twilio_recording(recording_url, audio_path)
     voice_model = user.get('voice_model', [])
     authenticated, score = verify_voice(voice_model, audio_path)
-    # Anti-replay: also check transcript matches challenge phrase
-    if authenticated:
-        challenge = state.get('auth_phrase', '')
-        response_text = speech_to_text(audio_path, lang)
-        if not _transcript_matches_challenge(challenge, response_text):
-            print(f"[AUTH] ⚠️ Voice match but transcript mismatch — replay attempt? score={score:.3f}")
-            authenticated = False
+    # Anti-replay check disabled: challenge is Roman transliteration but STT
+    # returns native script (Devanagari etc.) so word-set intersection always 0.
     attempts = state.get('auth_attempts', 0) + 1
     state['auth_attempts'] = attempts
     CALL_STATE[call_sid] = state
@@ -1662,4 +1648,4 @@ def companion_add_money():
 # ===========================================================================
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

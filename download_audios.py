@@ -1,5 +1,5 @@
 """
-VaaniPay — Audio Prompt Downloader
+SwaramPay — Audio Prompt Downloader
 ===================================
 Downloads all IVR audio prompts from Sarvam AI TTS and saves them to prompt_audio/.
 
@@ -31,7 +31,7 @@ PROMPT_DIR = Path(__file__).parent / "prompt_audio"
 # =============================================================================
 
 UNIVERSAL_LANGUAGE_MENU = (
-    "Welcome to VaaniPay. Your voice-first financial assistant. "
+    "Welcome to SwaramPay. Your voice-first financial assistant. "
     "Hindi ke liye, ek dabayein. "
     "For English, press two. "
     "Tamil ku, moondru anukku. "
@@ -56,7 +56,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Galat m PIN. Kripaya punah prayas karein.",
         "mpin_locked":      "Bahut adhik galat prayas. Call samapt ho rahi hai.",
         "no_account":       "Is number par koi khata nahin mila. Dhanyavaad.",
-        "auth_success":     "Praamanikaran safal. VaaniPay mein aapka swagat hai.",
+        "auth_success":     "Praamanikaran safal. SwaramPay mein aapka swagat hai.",
         # Main menu — IVR friendly, spelt-out numbers, option eight added
         "main_menu": (
             "Mukhya menu. "
@@ -94,7 +94,7 @@ SERVICE_PROMPTS = {
         "savings_success":    "Jama safaltapurvak darj.",
         # General
         "invalid":           "Amanya input. Kripaya punah prayas karein.",
-        "goodbye":           "VaaniPay ka upyog karne ke liye dhanyavaad. Namaste.",
+        "goodbye":           "SwaramPay ka upyog karne ke liye dhanyavaad. Namaste.",
         "error":             "Tantrik samasya. Kripaya baad mein prayas karein.",
         "please_wait":       "Kripaya prateeksha karein.",
     },
@@ -105,7 +105,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Incorrect m PIN. Please try again.",
         "mpin_locked":      "Too many failed attempts. Ending call.",
         "no_account":       "No account found for this number. Thank you.",
-        "auth_success":     "Authentication successful. Welcome to VaaniPay.",
+        "auth_success":     "Authentication successful. Welcome to SwaramPay.",
         "main_menu": (
             "Main menu. "
             "For U P I payment, press one. "
@@ -137,7 +137,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Press one to confirm deposit.",
         "savings_success":    "Deposit recorded successfully.",
         "invalid":           "Invalid input. Please try again.",
-        "goodbye":           "Thank you for using VaaniPay. Goodbye.",
+        "goodbye":           "Thank you for using SwaramPay. Goodbye.",
         "error":             "Technical error. Please try again later.",
         "please_wait":       "Please wait.",
     },
@@ -148,7 +148,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Thappaana m PIN. Meendum muyandrukavum.",
         "mpin_locked":      "Adhiga tholvigal. Azhaippu niruththappadukiradhu.",
         "no_account":       "Intha numberi kanakku illai.",
-        "auth_success":     "Saandru unarpagam vetrrikaramaanavadhu. VaaniPay-il varavERppu.",
+        "auth_success":     "Saandru unarpagam vetrrikaramaanavadhu. SwaramPay-il varavERppu.",
         "main_menu": (
             "Mookkiya menu. "
             "U P I seluththalukku ondru anukku. "
@@ -180,7 +180,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Uruthi ondru.",
         "savings_success":    "Vaipu pathivu seyyappattathu.",
         "invalid":           "Thappaana ullidai.",
-        "goodbye":           "VaaniPay payanpaduttiyatharku nandri.",
+        "goodbye":           "SwaramPay payanpaduttiyatharku nandri.",
         "error":             "Thazhnilai pazhuthu.",
         "please_wait":       "Thayavuseitu kaattirunga.",
     },
@@ -191,7 +191,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Thappu m PIN. Meeru malli prayancinandi.",
         "mpin_locked":      "Ekkuva viphala prayanalu. Call muginipotundi.",
         "no_account":       "Ee numberu lo khaata ledu.",
-        "auth_success":     "Dharuveekarana vijayavantamindi. VaaniPay ki swaagatam.",
+        "auth_success":     "Dharuveekarana vijayavantamindi. SwaramPay ki swaagatam.",
         "main_menu": (
             "Pradhana menu. "
             "U P I chellimpu kosam okati nakkandi. "
@@ -223,7 +223,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Nirdharinchate okati.",
         "savings_success":    "Deposit nondaindi.",
         "invalid":           "Chaellani input.",
-        "goodbye":           "VaaniPay upayoginchinduku dhanyavaadaalu.",
+        "goodbye":           "SwaramPay upayoginchinduku dhanyavaadaalu.",
         "error":             "Sangeetika paatha.",
         "please_wait":       "Dayachesi veechinchandi.",
     },
@@ -234,7 +234,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Tappu m PIN. Matte prayathnisi.",
         "mpin_locked":      "Hechu tappu prayathnagalu. Kare mugiyuttide.",
         "no_account":       "Ee sankhyege khate illa.",
-        "auth_success":     "Pramaanikarana yashashvi. VaaniPay ge swagata.",
+        "auth_success":     "Pramaanikarana yashashvi. SwaramPay ge swagata.",
         "main_menu": (
             "Mukhya menu. "
             "U P I pavathi ge ondu ottiri. "
@@ -266,7 +266,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Dhrudheekarisalu ondu.",
         "savings_success":    "Vandana daakhala.",
         "invalid":           "Amanya input.",
-        "goodbye":           "VaaniPay balasi dhannavada.",
+        "goodbye":           "SwaramPay balasi dhannavada.",
         "error":             "Tantrika doorti.",
         "please_wait":       "Dayavittu neeredisi.",
     },
@@ -277,7 +277,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Theettaya m PIN. Vendum shreemikuka.",
         "mpin_locked":      "Eera parichodhanagal adhikamaayi. Kol avasaanikkunnu.",
         "no_account":       "Ee numberin account kaanikkunilla.",
-        "auth_success":     "Pramaanikaranam vijayakaram. VaaniPay-il swaagatam.",
+        "auth_success":     "Pramaanikaranam vijayakaram. SwaramPay-il swaagatam.",
         "main_menu": (
             "Pradhana menu. "
             "U P I payment-inu onnu amarthuka. "
@@ -309,7 +309,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Sthireekarikkan onnu.",
         "savings_success":    "Deposit rekha.",
         "invalid":           "Asaadhu input.",
-        "goodbye":           "VaaniPay upayogichathin nandhi.",
+        "goodbye":           "SwaramPay upayogichathin nandhi.",
         "error":             "Samperka pathivu.",
         "please_wait":       "Dayavaayi kaathu nilkkuka.",
     },
@@ -320,7 +320,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Chukicha m PIN. Punha prayas kara.",
         "mpin_locked":      "Jast chukiche prayas. Call sampat ahe.",
         "no_account":       "Ya numbervara khate aadhal naahi.",
-        "auth_success":     "Pramineekarana yashashvi. VaaniPay madhye svagat.",
+        "auth_success":     "Pramineekarana yashashvi. SwaramPay madhye svagat.",
         "main_menu": (
             "Mukhya menu. "
             "U P I deykasathi ek daba. "
@@ -352,7 +352,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Pustikaran sathi ek.",
         "savings_success":    "Thev nondvali.",
         "invalid":           "Ayogya input.",
-        "goodbye":           "VaaniPay vaparlyas abhar.",
+        "goodbye":           "SwaramPay vaparlyas abhar.",
         "error":             "Tantrik samasya.",
         "please_wait":       "Krupaya pratiksha kara.",
     },
@@ -363,7 +363,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Bhul m PIN. Abar cheshta korun.",
         "mpin_locked":      "Onek bhul cheshta. Call shesh hochche.",
         "no_account":       "Ei numbere kono account paoa jaaini.",
-        "auth_success":     "Pramanikaran safal. VaaniPay-e swagato.",
+        "auth_success":     "Pramanikaran safal. SwaramPay-e swagato.",
         "main_menu": (
             "Mukhya menu. "
             "U P I payment-er jonyo ek chapa diye. "
@@ -395,7 +395,7 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Nishchit ek.",
         "savings_success":    "Amaanat nathivukt.",
         "invalid":           "Baidho input.",
-        "goodbye":           "VaaniPay baybaharer jonyo dhanyabaad.",
+        "goodbye":           "SwaramPay baybaharer jonyo dhanyabaad.",
         "error":             "Tantrik samasya.",
         "please_wait":       "Doyakore apekkhaa korun.",
     },
@@ -406,7 +406,7 @@ SERVICE_PROMPTS = {
         "wrong_mpin":       "Khoṭo m PIN. Pharthi prayas karo.",
         "mpin_locked":      "Ghano khoṭa prayaso. Kol paṭo thaay che.",
         "no_account":       "Aa number par khatu malyu nathi.",
-        "auth_success":     "Pramanikaran saphal. VaaniPay ma aapnu swagat che.",
+        "auth_success":     "Pramanikaran saphal. SwaramPay ma aapnu swagat che.",
         "main_menu": (
             "Mukhy menu. "
             "U P I chukvani mate ek dabavo. "
@@ -438,11 +438,136 @@ SERVICE_PROMPTS = {
         "savings_confirm":    "Pushti mate ek.",
         "savings_success":    "Thapan nondhayu.",
         "invalid":           "Amanya input.",
-        "goodbye":           "VaaniPay vaapravaa badal aabhar.",
+        "goodbye":           "SwaramPay vaapravaa badal aabhar.",
         "error":             "Tantrik samasya.",
         "please_wait":       "Krupa karine raho.",
     },
 }
+
+
+# =============================================================================
+# PART 4 — STATIC REGISTRATION / AUTH PROMPTS (pre-generated per language)
+# Saves live TTS calls during enrollment (~20s saved per registration call)
+# =============================================================================
+
+# Import prompt dicts from app config
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from config import ENROLLMENT_PHRASES
+
+STATIC_REGISTRATION_PROMPTS = {
+    "hi": {
+        "reg_name_prompt":   "Apna naam boliye.",
+        "enroll_intro":      "Abhi hum aapki awaaz register karenge. Aapko teen waakyaan dohraaney honge. Har baar beep ke baad clearly boliye.",
+        "guardian_prompt":   "Aapko ek SMS bheja gaya hai jisme companion portal ka link hai. Agar aap kisi guardian ko apne wallet mein paise daalne ki anumati dena chahte hain, toh unka 10 ank ka number abhi boliye. Nahi chahte toh chup rahiye.",
+        "guardian_dtmf":     "Keypad se guardian ka 10 ank ka number daalen.",
+        "auth_fail":         "Awaaz pehchaan teen baar mein nakaam rahi. Keypad PIN se try karein.",
+    },
+    "en": {
+        "reg_name_prompt":   "Please say your full name.",
+        "enroll_intro":      "We will now register your voice. You will repeat three phrases. Please speak clearly after each beep.",
+        "guardian_prompt":   "We have sent you an SMS with the companion portal link. If you would like to add a guardian who can add money to your wallet, please say their 10-digit number now. Otherwise stay silent.",
+        "guardian_dtmf":     "Please enter the guardian's 10-digit number on the keypad.",
+        "auth_fail":         "Voice authentication failed three times. Please use your keypad PIN instead.",
+    },
+    "ta": {
+        "reg_name_prompt":   "Ungal peyar sollunga.",
+        "enroll_intro":      "Ippodu ungal kural pothivom. Moondru vaarthaigalai thirumba solluveenga. Oru beep piragu thannai thendivu sollunga.",
+        "guardian_prompt":   "Ungal SMS-il companion portal link anuppinoom. Guardian number solluvadhu virupthamana sollunga. Illatha podu maun aagidunga.",
+        "guardian_dtmf":     "Guardian number keypad il type pannunga.",
+        "auth_fail":         "Kural arival moonru murai thappu. Keypad PIN upayogippu.",
+    },
+    "te": {
+        "reg_name_prompt":   "Meeru peru cheppandi.",
+        "enroll_intro":      "Ippudu meeru voice register cheyyabotunnam. Moodu phrases repeat cheyyandi. Prathi beep tarvata clearly maatladandi.",
+        "guardian_prompt":   "Mee SMS ki companion portal link pathimamu. Guardian number cheppali ante cheppandi. Leda maatladakandi.",
+        "guardian_dtmf":     "Keypad lo guardian number enter cheyyandi.",
+        "auth_fail":         "Voice auth moodu saarlu fail. Keypad PIN vadakandi.",
+    },
+    "kn": {
+        "reg_name_prompt":   "Nimma hesaru heli.",
+        "enroll_intro":      "Ippaga nimma dhwani nondayisuvemu. Mooru vaakya punha heluvi. Pratii beep nantara sparshta vaagi heli.",
+        "guardian_prompt":   "Companion portal link SMS madhye kalisiddeve. Guardian number helikollalu ichche iddare heli. Beda enandare sumu.",
+        "guardian_dtmf":     "Keypad nadige guardian number enter madi.",
+        "auth_fail":         "Voice auth moonru bari fail. Keypad PIN upayogisi.",
+    },
+    "ml": {
+        "reg_name_prompt":   "Ningalude peru parayan.",
+        "enroll_intro":      "Ippol ningalude shwaram register cheyyunnu. Moonnu vakyam repeat cheyyuka. Oru beep-inu sesham spashTamaai parayan.",
+        "guardian_prompt":   "Companion portal link SMS il anachchu. Guardian number parayan virumbunaale parayan. Illa enkil maunam pal.",
+        "guardian_dtmf":     "Guardian number keypadil type cheyyoo.",
+        "auth_fail":         "Voice auth moonnu thavana fail. Keypad PIN upayogikku.",
+    },
+    "mr": {
+        "reg_name_prompt":   "Tumcha naav sanga.",
+        "enroll_intro":      "Aata aapla awaz nondavuvat. Teen vakya punha sanga. Pratyeki beep nantar spashTa pane sanga.",
+        "guardian_prompt":   "Companion portal link SMS madhye pathavala ahe. Guardian number sangayache asel tar sanga. Nahi tar gapp raha.",
+        "guardian_dtmf":     "Guardian number keypad var enter kara.",
+        "auth_fail":         "Voice auth tin velaa fail. Keypad PIN vaapra.",
+    },
+    "bn": {
+        "reg_name_prompt":   "Aapnar naam bolun.",
+        "enroll_intro":      "Ekhon aapnar awaz nondhibon. Tin baky abar bolte hobe. Protibar beep er pore spashto kore bolun.",
+        "guardian_prompt":   "Companion portal link SMS e pathano hoyeche. Guardian number bolte chan ta bolun. Nahole chup thakun.",
+        "guardian_dtmf":     "Keypad e guardian number din.",
+        "auth_fail":         "Voice auth teen bar fail. Keypad PIN byabohar korun.",
+    },
+    "gu": {
+        "reg_name_prompt":   "Tamarun naam bolo.",
+        "enroll_intro":      "Havan tamaro awaj nond karvaano. Teen vaakyo repeat karva. Ek beep pachi spashTa bolo.",
+        "guardian_prompt":   "Companion portal link SMS ma mokli chhe. Guardian number keheva hoy to kaho. Na hoy to chup raho.",
+        "guardian_dtmf":     "Keypad par guardian number nakhho.",
+        "auth_fail":         "Voice auth tran vaar fail. Keypad PIN vaapo.",
+    },
+}
+
+PHRASE_COUNT_PREFIX = {
+    'hi': 'Vaakya', 'en': 'Phrase', 'ta': 'Vaarthai', 'te': 'Phrase',
+    'kn': 'Vaakya', 'ml': 'Phrase', 'mr': 'Vaakya', 'bn': 'Vakya', 'gu': 'Vaakya',
+}
+
+
+def download_static_registration_prompts(force: bool = False) -> tuple[int, int]:
+    """Pre-generate all static registration/auth prompts (name, enrollment, guardian)."""
+    ok = 0
+    fail = 0
+    print("\n=== Static Registration Prompts ===")
+    for lang, prompts in STATIC_REGISTRATION_PROMPTS.items():
+        for key, text in prompts.items():
+            out_path = PROMPT_DIR / f"{lang}_{key}.wav"
+            if out_path.exists() and not force:
+                print(f"  SKIP (exists): {out_path.name}")
+                ok += 1
+                continue
+            print(f"  Generating: {out_path.name} ...", end=" ", flush=True)
+            if save_tts(text, lang, out_path):
+                print("OK")
+                ok += 1
+            else:
+                print("FAIL")
+                fail += 1
+
+    print("\n=== Enrollment Phrases (0, 1, 2) per language ===")
+    for lang, phrases in ENROLLMENT_PHRASES.items():
+        prefix = PHRASE_COUNT_PREFIX.get(lang, 'Phrase')
+        for idx in range(3):
+            phrase = phrases[idx % len(phrases)]
+            text = f"{prefix} {idx + 1}: {phrase}"
+            out_path = PROMPT_DIR / f"{lang}_enroll_phrase_{idx}.wav"
+            if out_path.exists() and not force:
+                print(f"  SKIP (exists): {out_path.name}")
+                ok += 1
+                continue
+            print(f"  Generating: {out_path.name} ...", end=" ", flush=True)
+            if save_tts(text, lang, out_path):
+                print("OK")
+                ok += 1
+            else:
+                print("FAIL")
+                fail += 1
+
+    return ok, fail
 
 
 # =============================================================================
@@ -496,7 +621,7 @@ def download_service_prompts(force: bool = False, lang_filter: str | None = None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download VaaniPay IVR audio prompts via Sarvam AI TTS")
+    parser = argparse.ArgumentParser(description="Download SwaramPay IVR audio prompts via Sarvam AI TTS")
     parser.add_argument("--force",     action="store_true", help="Regenerate even if file already exists")
     parser.add_argument("--lang",      type=str, default=None, help="Only generate for one language (e.g. --lang hi)")
     parser.add_argument("--list",      action="store_true", help="Print all prompt keys without downloading")
@@ -524,6 +649,9 @@ def main():
         total_fail += fail
     elif not args.lang:
         ok, fail = download_universal_menu(force=args.force)
+        total_ok += ok
+        total_fail += fail
+        ok, fail = download_static_registration_prompts(force=args.force)
         total_ok += ok
         total_fail += fail
 

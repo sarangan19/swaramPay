@@ -139,7 +139,7 @@ def download_twilio_recording(recording_url: str, output_path: str) -> bool:
         wav_url = recording_url + ".wav" if not recording_url.endswith(".wav") else recording_url
         
         # Wait briefly for recording to be ready on Twilio's servers
-        time.sleep(1)
+        time.sleep(0.5)
         
         resp = requests.get(wav_url, auth=(account_sid, auth_token), timeout=15)
         if resp.ok:
