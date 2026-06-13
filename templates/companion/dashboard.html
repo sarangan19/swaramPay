@@ -49,6 +49,8 @@
     }
     #brand-name {
       display: inline-block;
+      min-width: 4em;
+      text-align: center;
       transition: opacity 0.45s ease, transform 0.45s ease;
     }
     #brand-name.slide-out {
@@ -67,8 +69,8 @@
       margin-right: 0.6rem;
     }
     header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem; }
-    .grid { max-width: 900px; margin: 0 auto; display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+    .grid { max-width: 800px; margin: 0 auto; display: grid;
+            grid-template-columns: 1fr; gap: 1.5rem; }
     .wallet-card {
       background: var(--card);
       border: 4px solid var(--ink);
@@ -87,14 +89,38 @@
     .balance span { font-size: 0.9rem; color: var(--muted); font-weight: 400; }
     .section-title { font-size: 0.75rem; color: var(--muted);
                      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; font-weight: 600; }
-    .tx-list { list-style: none; margin-bottom: 1.2rem; }
-    .tx-list li {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0.4rem 0; border-bottom: 2px solid var(--bg);
-      font-size: 0.85rem; color: var(--muted);
+    .card-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-top: 1.2rem;
     }
-    .tx-list li .amt { color: var(--success); font-weight: 600; }
-    .tx-list li .debit { color: var(--error-text); }
+    @media (max-width: 480px) {
+      .card-body { grid-template-columns: 1fr; }
+    }
+    .tx-panel {
+      background: var(--card);
+      border: 3px solid var(--ink);
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.15);
+      padding: 0.7rem 0.8rem;
+      font-family: 'Courier New', Courier, monospace;
+      max-height: 230px;
+      overflow-y: auto;
+    }
+    .tx-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 0.6rem;
+      padding: 0.45rem 0; border-bottom: 1px dashed var(--bg);
+      font-size: 0.78rem; color: var(--ink);
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-row.tx-header {
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+      font-size: 0.65rem; font-weight: 700;
+    }
+    .tx-row .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tx-row .amt { color: var(--success); font-weight: 700; white-space: nowrap; }
+    .tx-row .debit { color: var(--error-text); font-weight: 700; white-space: nowrap; }
+    .tx-empty { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 0.8rem 0; }
     .topup { display: flex; gap: 0.5rem; }
     .topup input {
       flex: 1; padding: 0.6rem 0.8rem; background: #fff;
@@ -119,6 +145,60 @@
     .topup button:active {
       transform: translate(4px, 4px);
       box-shadow: 0 0 0 var(--primary-shadow);
+    }
+    .progress-wrap {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.2s ease;
+    }
+    .progress-wrap.active { max-height: 40px; margin-top: 0.7rem; }
+    .progress-label {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.3rem;
+    }
+    .progress-track {
+      display: flex; gap: 2px;
+      border: 3px solid var(--ink);
+      background: #fff; padding: 3px; height: 16px;
+    }
+    .progress-seg { flex: 1; background: var(--bg); }
+    .progress-wrap.active .progress-seg {
+      background: var(--secondary);
+      opacity: 0.25;
+      animation: progress-pulse 1.2s ease-in-out infinite;
+    }
+    .progress-wrap.active .progress-seg:nth-child(1)  { animation-delay: 0.00s; }
+    .progress-wrap.active .progress-seg:nth-child(2)  { animation-delay: 0.08s; }
+    .progress-wrap.active .progress-seg:nth-child(3)  { animation-delay: 0.16s; }
+    .progress-wrap.active .progress-seg:nth-child(4)  { animation-delay: 0.24s; }
+    .progress-wrap.active .progress-seg:nth-child(5)  { animation-delay: 0.32s; }
+    .progress-wrap.active .progress-seg:nth-child(6)  { animation-delay: 0.40s; }
+    .progress-wrap.active .progress-seg:nth-child(7)  { animation-delay: 0.48s; }
+    .progress-wrap.active .progress-seg:nth-child(8)  { animation-delay: 0.56s; }
+    .progress-wrap.active .progress-seg:nth-child(9)  { animation-delay: 0.64s; }
+    .progress-wrap.active .progress-seg:nth-child(10) { animation-delay: 0.72s; }
+    @keyframes progress-pulse {
+      0%, 100% { opacity: 0.25; }
+      50% { opacity: 1; }
+    }
+    .coin-flip {
+      width: 42px; height: 42px;
+      margin: 0.7rem auto 0;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 3px solid var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.2rem; color: var(--ink);
+      opacity: 0;
+    }
+    .coin-flip.flip {
+      opacity: 1;
+      animation: coin-flip 0.5s ease-in-out 2;
+    }
+    @keyframes coin-flip {
+      0%   { transform: rotateY(0deg) scale(0.7); }
+      50%  { transform: rotateY(180deg) scale(1.2); }
+      100% { transform: rotateY(360deg) scale(1); }
     }
     .status-msg { font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2em; font-weight: 600; }
     .status-msg.success { color: var(--success); }
@@ -148,29 +228,46 @@
     <p class="section-title">Current Balance</p>
     <p class="balance">₹{{ "%.2f"|format(wallet.balance) }} <span>INR</span></p>
 
-    <p class="section-title">Recent Transactions</p>
-    <ul class="tx-list">
-      {% if wallet.recent %}
-        {% for tx in wallet.recent|reverse %}
-        <li>
-          <span>{{ tx.desc }} — {{ tx.timestamp[:10] }}</span>
-          <span class="{{ 'debit' if tx.type == 'debit' else 'amt' }}">
-            {{ '-' if tx.type == 'debit' else '+' }}₹{{ tx.amount }}
-          </span>
-        </li>
-        {% endfor %}
-      {% else %}
-        <li><span>No transactions yet</span></li>
-      {% endif %}
-    </ul>
+    <div class="card-body">
+      <div class="card-left">
+        <p class="section-title">Add Money</p>
+        <div class="topup">
+          <input type="number" min="1" max="50000" placeholder="Amount (₹)"
+                 id="amt-{{ wallet.phone }}" onkeydown="if(event.key==='Enter')topUp('{{ wallet.phone }}')"/>
+          <button onclick="topUp('{{ wallet.phone }}')">Add ₹</button>
+        </div>
+        <div class="progress-wrap" id="progress-{{ wallet.phone }}">
+          <p class="progress-label">Processing payment…</p>
+          <div class="progress-track">
+            {% for _ in range(10) %}<div class="progress-seg"></div>{% endfor %}
+          </div>
+        </div>
+        <div class="coin-flip" id="coin-{{ wallet.phone }}">₹</div>
+        <p class="status-msg" id="status-{{ wallet.phone }}"></p>
+      </div>
 
-    <p class="section-title">Add Money</p>
-    <div class="topup">
-      <input type="number" min="1" max="50000" placeholder="Amount (₹)"
-             id="amt-{{ wallet.phone }}" onkeydown="if(event.key==='Enter')topUp('{{ wallet.phone }}')"/>
-      <button onclick="topUp('{{ wallet.phone }}')">Add ₹</button>
+      <div class="card-right">
+        <p class="section-title">Transaction History</p>
+        <div class="tx-panel">
+          <div class="tx-row tx-header">
+            <span class="desc">Description</span>
+            <span class="amt">Amount</span>
+          </div>
+          {% if wallet.recent %}
+            {% for tx in wallet.recent|reverse %}
+            <div class="tx-row">
+              <span class="desc">{{ tx.desc }} — {{ tx.timestamp[:10] }}</span>
+              <span class="{{ 'debit' if tx.type == 'debit' else 'amt' }}">
+                {{ '-' if tx.type == 'debit' else '+' }}₹{{ tx.amount }}
+              </span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="tx-empty">No transactions yet</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
-    <p class="status-msg" id="status-{{ wallet.phone }}"></p>
   </div>
   {% endfor %}
 </div>
@@ -219,26 +316,36 @@ function slideTo(el, finalText) {
 async function topUp(phone) {
   const amtInput = document.getElementById('amt-' + phone);
   const statusEl = document.getElementById('status-' + phone);
+  const progressEl = document.getElementById('progress-' + phone);
+  const coinEl = document.getElementById('coin-' + phone);
   const amount = parseFloat(amtInput.value);
   if (!amount || amount <= 0 || amount > 50000) {
     statusEl.textContent = 'Enter a valid amount (₹1 – ₹50,000).';
     statusEl.className = 'status-msg error';
     return;
   }
-  statusEl.textContent = 'Processing…';
+  statusEl.textContent = '';
   statusEl.className = 'status-msg';
+  coinEl.classList.remove('flip');
+  progressEl.classList.add('active');
+
   const formData = new FormData();
   formData.append('target_phone', phone);
   formData.append('amount', amount);
   const res = await fetch('/companion/add-money', { method: 'POST', body: formData });
   const data = await res.json();
+
+  progressEl.classList.remove('active');
+
   if (data.status === 'success') {
-    statusEl.textContent = `✅ ₹${amount} added! New balance: ₹${data.new_balance.toFixed(2)}`;
+    void coinEl.offsetWidth;
+    coinEl.classList.add('flip');
+    statusEl.textContent = `₹${amount} added! New balance: ₹${data.new_balance.toFixed(2)}`;
     statusEl.className = 'status-msg success';
     amtInput.value = '';
-    setTimeout(() => location.reload(), 2000);
+    setTimeout(() => location.reload(), 2200);
   } else {
-    statusEl.textContent = '❌ ' + (data.error || 'Failed');
+    statusEl.textContent = data.error || 'Failed';
     statusEl.className = 'status-msg error';
   }
 }
