@@ -7,6 +7,8 @@ import datetime
 import threading
 from pathlib import Path
 
+import numpy as np
+
 from flask import Flask, request, Response, send_from_directory, render_template, redirect, session, jsonify
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client
@@ -21,18 +23,49 @@ from config import LANG_CONFIG, ENROLLMENT_PHRASES
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Voice biometrics — load VoiceEncoder once at startup (3-5 s cold start)
+# Voice biometrics — load SpeechBrain ECAPA-TDNN once at startup (5-8 s cold start)
 # ---------------------------------------------------------------------------
 try:
-    from resemblyzer import VoiceEncoder, preprocess_wav
-    import numpy as np
-    voice_encoder = VoiceEncoder()
-    print("[STARTUP] resemblyzer VoiceEncoder loaded.")
+    import torch
+    import torchaudio
+    import soundfile as sf
+    from speechbrain.inference.speaker import SpeakerRecognition
+
+    voice_encoder = SpeakerRecognition.from_hparams(
+        source="speechbrain/spkrec-ecapa-voxceleb",
+        savedir="pretrained_models/spkrec-ecapa-voxceleb",
+        run_opts={"device": "cpu"},
+    )
+    print("[STARTUP] SpeechBrain ECAPA-TDNN voice encoder loaded.")
 except Exception as _ve_err:
     voice_encoder = None
-    preprocess_wav = None
-    np = None
-    print(f"[STARTUP] resemblyzer not available: {_ve_err}")
+    torch = None
+    torchaudio = None
+    sf = None
+    print(f"[STARTUP] SpeechBrain not available: {_ve_err}")
+
+
+def load_and_resample(audio_path, target_sr=16000):
+    """
+    Load audio via soundfile and resample to 16kHz mono for ECAPA-TDNN.
+    soundfile is used instead of torchaudio.load() because newer torchaudio
+    versions delegate .load() to torchcodec, which isn't installed here.
+    """
+    data, sr = sf.read(audio_path)
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    waveform = torch.tensor(data, dtype=torch.float32).unsqueeze(0)
+    if sr != target_sr:
+        waveform = torchaudio.functional.resample(waveform, sr, target_sr)
+    return waveform
+
+
+def get_embedding(audio_path):
+    """Extract a SpeechBrain ECAPA-TDNN speaker embedding (192-dim)."""
+    waveform = load_and_resample(audio_path)
+    with torch.no_grad():
+        embedding = voice_encoder.encode_batch(waveform)
+    return embedding.squeeze().cpu().numpy()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'swarampay-dev-secret')
@@ -823,10 +856,9 @@ def register_voice_enroll_record():
     audio_path = f'dynamic_audio/enroll_rec_{call_sid}_{state["enroll_phrase_idx"]}.wav'
     download_twilio_recording(recording_url, audio_path)
     embedding = None
-    if voice_encoder is not None and preprocess_wav is not None:
+    if voice_encoder is not None:
         try:
-            wav = preprocess_wav(audio_path)
-            embedding = voice_encoder.embed_utterance(wav).tolist()
+            embedding = get_embedding(audio_path).tolist()
         except Exception as e:
             print(f"[ENROLL] Embedding failed: {e}")
     embeddings = state.get('enroll_embeddings', [])
@@ -1035,7 +1067,7 @@ def register_complete():
 # SECTION 3 — Voice Authentication (returning callers)
 # ===========================================================================
 
-VOICE_AUTH_THRESHOLD = 0.65  # start lower for 8kHz Twilio audio; tune with real calls
+VOICE_AUTH_THRESHOLD = 0.25  # SpeechBrain ECAPA-TDNN cosine similarity; measured same-speaker ~0.65 vs diff-speaker ~0.18 (separation ~0.47)
 
 
 def verify_voice(stored_model_list, audio_path):
@@ -1049,8 +1081,7 @@ def verify_voice(stored_model_list, audio_path):
         return False, 0.0
     try:
         stored = np.array(stored_model_list)
-        wav = preprocess_wav(audio_path)
-        live = voice_encoder.embed_utterance(wav)
+        live = get_embedding(audio_path)
         similarity = float(np.dot(stored, live) / (np.linalg.norm(stored) * np.linalg.norm(live)))
         print(f"[VOICE AUTH] Cosine similarity: {similarity:.3f}")
         return similarity >= VOICE_AUTH_THRESHOLD, similarity
