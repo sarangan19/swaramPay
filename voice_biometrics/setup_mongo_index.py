@@ -13,6 +13,7 @@ $vectorSearch queries (mongo_store.find_best_match) will return results.
 
 import argparse
 
+from pymongo.errors import CollectionInvalid
 from pymongo.operations import SearchIndexModel
 
 from voice_biometrics.mongo_store import (
@@ -30,6 +31,13 @@ def main():
 
     coll = _get_collection()
     dims = EMBEDDING_DIMS[args.backend]
+
+    # Search indexes can only be created on existing collections.
+    try:
+        coll.database.create_collection(coll.name)
+        print(f"Created empty collection {coll.full_name}")
+    except CollectionInvalid:
+        pass  # already exists
 
     index_model = SearchIndexModel(
         definition={
