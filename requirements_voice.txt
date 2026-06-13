@@ -1,0 +1,17 @@
+# VaaniPay Voice Biometrics — additional dependencies
+# Install with: pip install -r requirements_voice.txt
+
+# --- Backend: resemblyzer (option 1) ---
+resemblyzer>=0.1.1.1
+
+# --- Backend: SpeechBrain ECAPA-TDNN (option 2) ---
+speechbrain>=0.5.15
+torchaudio>=2.0.0
+torch>=2.0.0           # CPU build is fine; GPU not required
+
+# --- Audio processing (shared) ---
+soundfile>=0.12.0      # reading/writing WAV files
+scipy>=1.10.0          # needed for --simulate-twilio in test_comparison.py
+
+# --- Mic recording (only needed for test_comparison.py --generate-test-audio) ---
+sounddevice>=0.4.6

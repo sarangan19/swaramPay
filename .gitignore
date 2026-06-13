@@ -1,0 +1,12 @@
+# SpeechBrain downloads the ECAPA model here on first run (~80MB) — don't commit
+pretrained_models/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Dynamic/generated audio
+dynamic_audio/
+test_audio/
+voice_biometrics_results.json
