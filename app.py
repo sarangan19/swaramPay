@@ -21,18 +21,16 @@ from config import LANG_CONFIG, ENROLLMENT_PHRASES
 load_dotenv(override=True)
 
 # ---------------------------------------------------------------------------
-# Voice biometrics — load VoiceEncoder once at startup (3-5 s cold start)
+# Voice biometrics — load SpeechBrain ECAPA-TDNN model once at startup (3-5 s cold start)
 # ---------------------------------------------------------------------------
+import numpy as np
+from services.voice_auth import load_classifier, get_embedding, cosine_similarity
+
 try:
-    from resemblyzer import VoiceEncoder, preprocess_wav
-    import numpy as np
-    voice_encoder = VoiceEncoder()
-    print("[STARTUP] resemblyzer VoiceEncoder loaded.")
+    load_classifier()
+    print("[STARTUP] SpeechBrain ECAPA-TDNN speaker model loaded.")
 except Exception as _ve_err:
-    voice_encoder = None
-    preprocess_wav = None
-    np = None
-    print(f"[STARTUP] resemblyzer not available: {_ve_err}")
+    print(f"[STARTUP] SpeechBrain model not available: {_ve_err}")
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'swarampay-dev-secret')
@@ -80,6 +78,11 @@ def play(response, lang, prompt_name):
     """Play a pre-generated static prompt audio file."""
     audio_url = f"/audio/{lang}_{prompt_name}.wav"
     response.play(audio_url)
+
+
+def _is_affirmative(text: str) -> bool:
+    """Check whether a transcribed yes/no answer is affirmative."""
+    return any(w in text for w in YES_WORDS)
 
 
 def redirect_to_prompt(route):
@@ -237,9 +240,15 @@ def submit_mpin():
 @app.route('/prompt-main-menu', methods=['GET', 'POST'])
 def prompt_main_menu():
     call_sid = request.values.get('CallSid')
-    lang = CALL_STATE.get(call_sid, {}).get('lang', 'en')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'en')
     resp = VoiceResponse()
-    play(resp, lang, 'how_can_i_help')
+    if state.get('visited_main_menu'):
+        play(resp, lang, 'anything_else')
+    else:
+        play(resp, lang, 'how_can_i_help')
+        state['visited_main_menu'] = True
+        CALL_STATE[call_sid] = state
     resp.record(action='/handle-intent', method='POST', max_length=10,
                 play_beep=True, timeout=5)
     resp.redirect('/prompt-main-menu')
@@ -847,12 +856,10 @@ def register_voice_enroll_record():
     audio_path = f'dynamic_audio/enroll_rec_{call_sid}_{state["enroll_phrase_idx"]}.wav'
     download_twilio_recording(recording_url, audio_path)
     embedding = None
-    if voice_encoder is not None and preprocess_wav is not None:
-        try:
-            wav = preprocess_wav(audio_path)
-            embedding = voice_encoder.embed_utterance(wav).tolist()
-        except Exception as e:
-            print(f"[ENROLL] Embedding failed: {e}")
+    try:
+        embedding = get_embedding(audio_path)
+    except Exception as e:
+        print(f"[ENROLL] Embedding failed: {e}")
     embeddings = state.get('enroll_embeddings', [])
     if embedding:
         embeddings.append(embedding)
@@ -950,10 +957,43 @@ def register_guardian_prompt():
     except Exception as e:
         print(f"[SMS] Failed to send portal link: {e}")
     resp = VoiceResponse()
-    resp.play(f'/audio/{lang}_guardian_prompt.wav')
-    resp.record(action='/register/guardian-number-submit', method='POST',
-                max_length=10, play_beep=False, timeout=6)
+    resp.play(f'/audio/{lang}_guardian_ask.wav')
+    resp.record(action='/register/guardian-yn-submit', method='POST',
+                max_length=4, play_beep=False, timeout=4)
     resp.redirect('/register/complete')
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/register/guardian-yn-submit', methods=['GET', 'POST'])
+def register_guardian_yn_submit():
+    call_sid = request.values.get('CallSid')
+    recording_url = request.values.get('RecordingUrl', '')
+    duration = int(request.values.get('RecordingDuration', 0))
+    state = CALL_STATE[call_sid]
+    lang = state.get('lang', 'hi')
+    if duration < 1:
+        state['guardians'] = []
+        CALL_STATE[call_sid] = state
+        return redirect_to_prompt('/register/complete')
+    audio_path = f'dynamic_audio/guardian_yn_{call_sid}.wav'
+    download_twilio_recording(recording_url, audio_path)
+    answer = speech_to_text(audio_path, lang).lower().strip()
+    if _is_affirmative(answer):
+        return redirect_to_prompt('/register/guardian-number-prompt')
+    state['guardians'] = []
+    CALL_STATE[call_sid] = state
+    return redirect_to_prompt('/register/complete')
+
+
+@app.route('/register/guardian-number-prompt', methods=['GET', 'POST'])
+def register_guardian_number_prompt():
+    call_sid = request.values.get('CallSid')
+    lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
+    resp = VoiceResponse()
+    resp.play(f'/audio/{lang}_guardian_number_ask.wav')
+    resp.record(action='/register/guardian-number-submit', method='POST',
+                max_length=10, play_beep=True, timeout=6)
+    resp.redirect('/register/guardian-keypad')
     return Response(str(resp), mimetype='text/xml')
 
 
@@ -965,7 +1005,8 @@ def register_guardian_number_submit():
     state = CALL_STATE[call_sid]
     lang = state.get('lang', 'hi')
     if duration < 1:
-        return redirect_to_prompt('/register/complete')
+        # User already said yes — fall back to keypad instead of skipping
+        return redirect_to_prompt('/register/guardian-keypad')
     audio_path = f'dynamic_audio/guardian_num_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
     # Force English STT for number capture — digits are spoken in English across all languages
@@ -1036,21 +1077,7 @@ def register_guardian_confirm_submit():
     audio_path = f'dynamic_audio/guardian_yn_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
     answer = speech_to_text(audio_path, lang).lower().strip()
-    confirmed = any(w in answer for w in [
-        # Roman transliterations
-        'haan', 'ha', 'yes', 'ho', 'sahi', 'correct', 'theek',
-        'aama', 'avunu', 'hovudu', 'aana',
-        # Native scripts: Hindi/Marathi हाँ हां हा जी, Bengali হ্যাঁ হ্যা,
-        # Tamil ஆம், Telugu అవును, Kannada ಹೌದು, Malayalam ആണ്, Gujarati હા
-        'हाँ', 'हां', 'हा', 'जी', 'हो',
-        'হ্যাঁ', 'হ্যা', 'হা',
-        'ஆம்', 'ஆமா',
-        'అవును', 'అవు',
-        'ಹೌದು', 'ಹೌ',
-        'ആണ്', 'ആനൽ',
-        'હા', 'હાં',
-    ])
-    if confirmed:
+    if _is_affirmative(answer):
         guardian_phone = state.get('pending_guardian')
         state['guardians'] = [guardian_phone]
         CALL_STATE[call_sid] = state
@@ -1107,7 +1134,9 @@ def register_complete():
 # SECTION 3 — Voice Authentication (returning callers)
 # ===========================================================================
 
-VOICE_AUTH_THRESHOLD = 0.80  # calibrated: genuine ~0.86-0.88, impostor ~0.68-0.74 on 8kHz Twilio audio
+# SpeechBrain ECAPA-TDNN cosine similarity on 8kHz Twilio audio — calibrated from live
+# test calls: genuine scores 0.602/0.564/0.709/0.773, impostor scores 0.281/0.347/0.520/0.383/0.472.
+VOICE_AUTH_THRESHOLD = 0.55
 
 
 def verify_voice(stored_model_list, audio_path):
@@ -1120,10 +1149,8 @@ def verify_voice(stored_model_list, audio_path):
         print("[VOICE AUTH] No voice model enrolled.")
         return False, 0.0
     try:
-        stored = np.array(stored_model_list)
-        wav = preprocess_wav(audio_path)
-        live = voice_encoder.embed_utterance(wav)
-        similarity = float(np.dot(stored, live) / (np.linalg.norm(stored) * np.linalg.norm(live)))
+        live = get_embedding(audio_path)
+        similarity = cosine_similarity(stored_model_list, live)
         print(f"[VOICE AUTH] Cosine similarity: {similarity:.3f}")
         return similarity >= VOICE_AUTH_THRESHOLD, similarity
     except Exception as e:
@@ -1203,15 +1230,47 @@ def auth_verify():
         resp.redirect('/prompt-mpin')
         return Response(str(resp), mimetype='text/xml')
     else:
-        return redirect_to_prompt('/auth/greet')
+        print(f"[AUTH] ❌ {user.get('phone')} voice mismatch (score={score:.3f}, attempt {attempts}/3)")
+        resp = VoiceResponse()
+        play(resp, lang, 'auth_retry')
+        resp.redirect('/auth/greet')
+        return Response(str(resp), mimetype='text/xml')
 
 
 # ===========================================================================
 # SECTION 6 — Contacts + Intent Extraction + Voice Command
 # ===========================================================================
 
+# English relationship words mapped to the Hindi/Devanagari forms a contact's
+# nickname might have been saved as (transcripts are saved in native script,
+# but payment requests are matched against the English-translated transcript).
+RELATION_TERMS = {
+    'nephew': {'bhatija', 'भतीजा'},
+    'niece': {'bhatiji', 'भतीजी'},
+    'son': {'beta', 'बेटा'},
+    'daughter': {'beti', 'बेटी'},
+    'brother': {'bhai', 'भाई'},
+    'sister': {'behan', 'behen', 'बहन'},
+    'elder sister': {'didi', 'दीदी'},
+    'friend': {'dost', 'दोस्त'},
+    'mother': {'maa', 'mummy', 'मां', 'मम्मी'},
+    'father': {'papa', 'baba', 'पापा', 'बाबा'},
+    'wife': {'patni', 'पत्नी'},
+    'husband': {'pati', 'पति'},
+    'grandfather': {'dada', 'nana', 'दादा', 'नाना'},
+    'grandmother': {'dadi', 'nani', 'दादी', 'नानी'},
+    'uncle': {'chacha', 'mama', 'चाचा', 'मामा'},
+    'aunt': {'chachi', 'mami', 'चाची', 'मामी'},
+}
+
+
+def _normalize_name(s: str) -> str:
+    """Lowercase and strip trailing punctuation (e.g. Devanagari danda '।')."""
+    return s.strip().strip('।.,!?').lower()
+
+
 def find_contact(user_phone: str, nickname: str):
-    """Look up contact by nickname, handling Hindi oblique case."""
+    """Look up contact by nickname, handling Hindi oblique case and English relation words."""
     oblique_map = {
         'bhatije': 'bhatija', 'bete': 'beta', 'bhai ko': 'bhai',
         'behan ko': 'behan', 'didi ko': 'didi', 'dost ko': 'dost',
@@ -1219,12 +1278,15 @@ def find_contact(user_phone: str, nickname: str):
     }
     users = load_json('data/users.json')
     contacts = users.get(user_phone, {}).get('contacts', [])
-    nick_lower = nickname.lower().strip()
+    nick_lower = _normalize_name(nickname)
     normalized = oblique_map.get(nick_lower, nick_lower)
+    native_forms = RELATION_TERMS.get(normalized, set())
     for contact in contacts:
-        if normalized in contact.get('nickname', '').lower():
+        contact_nickname = _normalize_name(contact.get('nickname', ''))
+        contact_real_name = _normalize_name(contact.get('real_name', ''))
+        if normalized in contact_nickname or normalized in contact_real_name:
             return contact
-        if normalized in contact.get('real_name', '').lower():
+        if contact_nickname in native_forms or contact_real_name in native_forms:
             return contact
     return None
 
@@ -1235,12 +1297,17 @@ def find_contact_in_text(user_phone: str, text: str):
     contacts = users.get(user_phone, {}).get('contacts', [])
     text_lower = text.lower()
     for contact in contacts:
-        nickname = contact.get('nickname', '').lower().strip()
-        real_name = contact.get('real_name', '').lower().strip()
+        nickname = _normalize_name(contact.get('nickname', ''))
+        real_name = _normalize_name(contact.get('real_name', ''))
         if nickname and nickname in text_lower:
             return contact
         if real_name and real_name in text_lower:
             return contact
+        # Match English relation words (e.g. "nephew") against a nickname
+        # saved in Hindi/Devanagari (e.g. "bhatija" / "भतीजा")
+        for english_word, native_forms in RELATION_TERMS.items():
+            if english_word in text_lower and (nickname in native_forms or real_name in native_forms):
+                return contact
     return None
 
 
@@ -1645,21 +1712,21 @@ def payment_amount():
 
 
 def notify_guardians(user, recipient_name, amount, new_balance):
-    """SMS each registered guardian when the ward makes a payment."""
+    """SMS the ward's own number, plus any registered guardians, when a payment is made."""
+    ward_name = user.get('name', 'Aapka')
+    ward_phone = user.get('phone')
     guardians = user.get('guardians', [])
-    if not guardians:
-        return
-    ward_name = user.get('name', 'Aapka ward')
     body = (f"SwaramPay: {ward_name} ne {recipient_name} ko Rs {amount} bheja hai. "
             f"Naya balance: Rs {int(new_balance)}.")
     try:
         twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
-        for guardian_phone in guardians:
+        recipients = ([ward_phone] if ward_phone else []) + guardians
+        for phone in recipients:
             twilio_client.messages.create(
-                body=body, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{guardian_phone}'
+                body=body, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{phone}'
             )
     except Exception as e:
-        print(f"[SMS] Guardian notify failed: {e}")
+        print(f"[SMS] Payment notify failed: {e}")
 
 
 def complete_payment(resp, call_sid, state, lang):
