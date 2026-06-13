@@ -1,4 +1,5 @@
 import json
+import datetime
 
 def load_json(path):
     try:
@@ -53,24 +54,33 @@ def calculate_behavioral_score(user_phone):
     
     return score, factors
 
-def perform_upi_transaction(user_phone, amount):
+def perform_upi_transaction(user_phone, amount, desc="UPI Payment"):
     amount = float(amount)
     users = load_json('data/users.json')
     accounts = load_json('data/accounts.json')
     txns = load_json('data/transactions.json')
-    
+
     user = users.get(user_phone)
     acc_id = user.get('account_id')
-    
+
     if accounts[acc_id]['balance'] >= amount:
         accounts[acc_id]['balance'] -= amount
-        
+
         # Initialize the transaction list if it doesn't exist yet
         if acc_id not in txns:
             txns[acc_id] = []
-            
-        txns[acc_id].append({"type": "debit", "amount": amount, "desc": "UPI Payment"})
-        
+
+        txns[acc_id].append({"type": "debit", "amount": amount, "desc": desc})
+
+        if 'transactions' not in accounts[acc_id]:
+            accounts[acc_id]['transactions'] = []
+        accounts[acc_id]['transactions'].append({
+            "type": "debit",
+            "amount": amount,
+            "desc": desc,
+            "timestamp": str(datetime.datetime.now()),
+        })
+
         save_json('data/accounts.json', accounts)
         save_json('data/transactions.json', txns)
         return True, accounts[acc_id]['balance']

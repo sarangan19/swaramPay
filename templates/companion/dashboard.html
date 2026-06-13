@@ -73,7 +73,7 @@
 <div class="grid">
   {% for wallet in wallets %}
   <div class="wallet-card">
-    <h2>{{ wallet.name }}</h2>
+    <h2>{{ wallet.name }}{% if wallet.is_self %} (You){% endif %}</h2>
     <p class="phone">📱 {{ wallet.phone }}</p>
 
     <p class="section-title">Current Balance</p>
@@ -102,6 +102,24 @@
       <button onclick="topUp('{{ wallet.phone }}')">Add ₹</button>
     </div>
     <p class="status-msg" id="status-{{ wallet.phone }}"></p>
+
+    {% if wallet.is_self %}
+    <p class="section-title" style="margin-top:1.2rem">Transaction History</p>
+    <ul class="tx-list">
+      {% if wallet.history %}
+        {% for tx in wallet.history %}
+        <li>
+          <span>{{ tx.desc }} — {{ tx.timestamp[:10] }}</span>
+          <span class="{{ 'debit' if tx.type == 'debit' else 'amt' }}">
+            {{ '-' if tx.type == 'debit' else '+' }}₹{{ tx.amount }}
+          </span>
+        </li>
+        {% endfor %}
+      {% else %}
+        <li><span>No transactions yet</span></li>
+      {% endif %}
+    </ul>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

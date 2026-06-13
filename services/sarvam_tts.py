@@ -7,12 +7,13 @@ suitable for Twilio telephony playback.
 """
 import base64
 import os
+import time
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 
@@ -56,13 +57,17 @@ def generate_tts(text: str, lang_key: str) -> bytes:
         "api-subscription-key": api_key,
     }
 
-    resp = requests.post(SARVAM_TTS_URL, json=payload, headers=headers, timeout=20)
-    if not resp.ok:
-        raise RuntimeError(f"HTTP {resp.status_code}: {resp.json()}")
+    t0 = time.perf_counter()
+    try:
+        resp = requests.post(SARVAM_TTS_URL, json=payload, headers=headers, timeout=20)
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.json()}")
 
-    data = resp.json()
-    audio_b64 = data["audios"][0]
-    return base64.b64decode(audio_b64)
+        data = resp.json()
+        audio_b64 = data["audios"][0]
+        return base64.b64decode(audio_b64)
+    finally:
+        print(f"   [TIMING] generate_tts({lang_key}) took {time.perf_counter() - t0:.2f}s")
 
 
 def save_tts(text: str, lang_key: str, output_path: Path) -> bool:

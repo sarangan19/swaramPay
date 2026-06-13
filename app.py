@@ -13,12 +13,12 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 
 from services.sarvam_tts import save_tts
-from services.ai_mentor import speech_to_text, download_twilio_recording, process_mentor_audio
+from services.ai_mentor import speech_to_text, speech_to_text_english, groq_extract, download_twilio_recording, process_mentor_audio
 from mock_db import get_user, get_account
 from services.financial_ops import load_json, save_json, calculate_behavioral_score, perform_upi_transaction
 from config import LANG_CONFIG, ENROLLMENT_PHRASES
 
-load_dotenv()
+load_dotenv(override=True)
 
 # ---------------------------------------------------------------------------
 # Voice biometrics — load VoiceEncoder once at startup (3-5 s cold start)
@@ -59,6 +59,19 @@ BALANCE_TEMPLATE = {
     'gu': 'Tamarun baki balance chhe {} rupiya'
 }
 
+# Native + Roman yes-words used across voice confirmation prompts
+YES_WORDS = [
+    'haan', 'ha', 'yes', 'ho', 'sahi', 'correct', 'theek', 'bilkul',
+    'aama', 'avunu', 'hovudu', 'aana',
+    'हाँ', 'हां', 'हा', 'जी', 'हो',
+    'হ্যাঁ', 'হ্যা', 'হা',
+    'ஆம்', 'ஆமா',
+    'అవును', 'అవు',
+    'ಹೌದು', 'ಹೌ',
+    'ആണ്', 'ആനൽ',
+    'હા', 'હાં',
+]
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -88,6 +101,17 @@ def serve_audio(filename):
 @app.route('/dynamic-audio/<filename>')
 def serve_dynamic_audio(filename):
     return send_from_directory('dynamic_audio', filename)
+
+
+@app.route('/call-status', methods=['POST'])
+def call_status():
+    """Twilio status-callback webhook — logs call lifecycle events and cleans up CALL_STATE."""
+    call_sid = request.values.get('CallSid')
+    status = request.values.get('CallStatus')
+    print(f"[CALL STATUS] {call_sid}: {status}")
+    if status in ('completed', 'busy', 'failed', 'no-answer', 'canceled'):
+        CALL_STATE.pop(call_sid, None)
+    return ('', 204)
 
 
 # ---------------------------------------------------------------------------
@@ -215,9 +239,9 @@ def prompt_main_menu():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'en')
     resp = VoiceResponse()
-    gather = Gather(num_digits=1, action='/submit-main-menu', method='POST', timeout=12)
-    play(gather, lang, 'main_menu')
-    resp.append(gather)
+    play(resp, lang, 'how_can_i_help')
+    resp.record(action='/handle-intent', method='POST', max_length=10,
+                play_beep=True, timeout=5)
     resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
 
@@ -678,15 +702,15 @@ GUARDIAN_DTMF_PROMPTS = {
 }
 
 COMPLETION_PROMPTS = {
-    'hi': "Badhaai ho {}ji! Aapka SwaramPay wallet tayaar hai. Aapka balance abhi shunya rupaye hai.",
-    'en': "Congratulations {}! Your SwaramPay wallet is ready. Your current balance is zero rupees.",
-    'ta': "Nandri {}! Ungal SwaramPay wallet tayaar. Balance poojaram.",
-    'te': "Abhinandanalu {}! Mee SwaramPay wallet ready. Balance sunya.",
-    'kn': "Abhimanada {}! Nimmada SwaramPay wallet siddha. Balance soonnya.",
-    'ml': "Aabhivaadanam {}! Ningalude SwaramPay wallet tayaar. Balance poojyam.",
-    'mr': "Abhinandan {}! Tumcha SwaramPay wallet tayaar ahe. Balance abhi shunya ahe.",
-    'bn': "Abhinandan {}! Aapnar SwaramPay wallet tayaar. Balance ekhon shunyo.",
-    'gu': "Abhinandan {}! Tamaro SwaramPay wallet tayaar chhe. Balance abhi shonya chhe.",
+    'hi': "Badhaai ho {}ji! Aapka SwaramPay wallet tayaar hai. Paise jama karne ke liye, hamari website par jaayein. Dhanyavaad!",
+    'en': "Congratulations {}! Your SwaramPay wallet is ready. Please visit our website to deposit money. Thank you!",
+    'ta': "Nandri {}! Ungal SwaramPay wallet tayaar. Panam podradhuku, engal website-ku sellungal. Nandri!",
+    'te': "Abhinandanalu {}! Mee SwaramPay wallet ready. Daanam jamacheyataniki, maa website ki vellandi. Dhanyavaadalu!",
+    'kn': "Abhimanada {}! Nimmada SwaramPay wallet siddha. Hana jama maadalu, nammada website ge hogi. Dhanyavaadagalu!",
+    'ml': "Aabhivaadanam {}! Ningalude SwaramPay wallet tayaar. Panam nikshepikkan, njangalude website il pokoo. Nanni!",
+    'mr': "Abhinandan {}! Tumcha SwaramPay wallet tayaar ahe. Paise jama karnyasathi, amchya website la jaa. Dhanyavaad!",
+    'bn': "Abhinandan {}! Aapnar SwaramPay wallet tayaar. Taka jama korar jonno, amader website e jaan. Dhonnobad!",
+    'gu': "Abhinandan {}! Tamaro SwaramPay wallet tayaar chhe. Paisa jama karva mate, amari website par jaav. Aabhar!",
 }
 
 
@@ -852,26 +876,60 @@ def register_build_voice_model():
         state['enroll_embeddings'] = []
         state['enroll_phrase_idx'] = 0
         CALL_STATE[call_sid] = state
-        retry_texts = {
-            'hi': "Awaaz record karne mein samasya aayi. Kripya phir se try karein.",
-            'en': "There was a problem recording your voice. Please try again.",
-            'ta': "Kural record seiya mushkilaagiirundu. Meedum try pannunga.",
-            'te': "Voice record lo problem ayindi. Malli try cheyyandi.",
-            'kn': "Voice record ge samasye. Dayavittu matte try madi.",
-            'ml': "Shwaram record cheyyaan problem. Onnu koodi try cheyyoo.",
-            'mr': "Awaz record karne madhe problem. Parat try kara.",
-            'bn': "Awaz record korte problem hoyeche. Abar try korun.",
-            'gu': "Awaj record karavama problem. Pharthi try karo.",
-        }
-        retry_audio = Path(f'dynamic_audio/enroll_retry_{call_sid}.wav')
-        save_tts(retry_texts.get(lang, retry_texts['en']), lang, retry_audio)
         resp = VoiceResponse()
-        resp.play(f'/dynamic-audio/enroll_retry_{call_sid}.wav')
+        play(resp, lang, 'enroll_retry')
         resp.redirect('/register/voice-enroll-intro')
         return Response(str(resp), mimetype='text/xml')
     # Average embeddings
     avg = np.mean(np.array(embeddings), axis=0).tolist()
     state['voice_model'] = avg
+    CALL_STATE[call_sid] = state
+    return redirect_to_prompt('/register/mpin-setup')
+
+
+@app.route('/register/mpin-setup', methods=['GET', 'POST'])
+def register_mpin_setup():
+    call_sid = request.values.get('CallSid')
+    lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
+    resp = VoiceResponse()
+    gather = Gather(num_digits=4, action='/register/mpin-confirm', method='POST', timeout=15)
+    play(gather, lang, 'mpin_setup')
+    resp.append(gather)
+    resp.redirect('/register/mpin-setup')
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/register/mpin-confirm', methods=['GET', 'POST'])
+def register_mpin_confirm():
+    call_sid = request.values.get('CallSid')
+    digits = request.values.get('Digits', '')
+    state = CALL_STATE[call_sid]
+    lang = state.get('lang', 'hi')
+    if len(digits) != 4 or not digits.isdigit():
+        return redirect_to_prompt('/register/mpin-setup')
+    state['pending_mpin'] = digits
+    CALL_STATE[call_sid] = state
+    resp = VoiceResponse()
+    gather = Gather(num_digits=4, action='/register/mpin-verify', method='POST', timeout=15)
+    play(gather, lang, 'mpin_confirm')
+    resp.append(gather)
+    resp.redirect('/register/mpin-setup')
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/register/mpin-verify', methods=['GET', 'POST'])
+def register_mpin_verify():
+    call_sid = request.values.get('CallSid')
+    digits = request.values.get('Digits', '')
+    state = CALL_STATE[call_sid]
+    lang = state.get('lang', 'hi')
+    if digits != state.get('pending_mpin'):
+        resp = VoiceResponse()
+        play(resp, lang, 'mpin_mismatch')
+        resp.redirect('/register/mpin-setup')
+        return Response(str(resp), mimetype='text/xml')
+    state['mpin'] = digits
+    state.pop('pending_mpin', None)
     CALL_STATE[call_sid] = state
     return redirect_to_prompt('/register/guardian-prompt')
 
@@ -910,7 +968,8 @@ def register_guardian_number_submit():
         return redirect_to_prompt('/register/complete')
     audio_path = f'dynamic_audio/guardian_num_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
-    transcript = speech_to_text(audio_path, lang)
+    # Force English STT for number capture — digits are spoken in English across all languages
+    transcript = speech_to_text(audio_path, 'en')
     digits_only = re.sub(r'\D', '', transcript)
     if len(digits_only) != 10:
         # Voice didn't yield 10 digits — fall back to DTMF keypad
@@ -977,8 +1036,20 @@ def register_guardian_confirm_submit():
     audio_path = f'dynamic_audio/guardian_yn_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
     answer = speech_to_text(audio_path, lang).lower().strip()
-    confirmed = any(w in answer for w in ['haan', 'ha', 'yes', 'ho', 'sahi', 'correct', 'theek',
-                                           'aama', 'avunu', 'hovudu', 'aana', 'aabhivaadanam'])
+    confirmed = any(w in answer for w in [
+        # Roman transliterations
+        'haan', 'ha', 'yes', 'ho', 'sahi', 'correct', 'theek',
+        'aama', 'avunu', 'hovudu', 'aana',
+        # Native scripts: Hindi/Marathi हाँ हां हा जी, Bengali হ্যাঁ হ্যা,
+        # Tamil ஆம், Telugu అవును, Kannada ಹೌದು, Malayalam ആണ്, Gujarati હા
+        'हाँ', 'हां', 'हा', 'जी', 'हो',
+        'হ্যাঁ', 'হ্যা', 'হা',
+        'ஆம்', 'ஆமா',
+        'అవును', 'అవు',
+        'ಹೌದು', 'ಹೌ',
+        'ആണ്', 'ആനൽ',
+        'હા', 'હાં',
+    ])
     if confirmed:
         guardian_phone = state.get('pending_guardian')
         state['guardians'] = [guardian_phone]
@@ -1014,6 +1085,7 @@ def register_complete():
         'phone': phone,
         'lang': lang,
         'voice_model': state.get('voice_model', []),
+        'pin': state.get('mpin', ''),
         'account_id': acc_id,
         'guardians': state.get('guardians', []),
         'contacts': [],
@@ -1027,7 +1099,7 @@ def register_complete():
     save_tts(completion_text, lang, audio_path)
     resp = VoiceResponse()
     resp.play(f'/dynamic-audio/reg_complete_{call_sid}.wav')
-    resp.redirect('/prompt-main-menu')
+    resp.hangup()
     return Response(str(resp), mimetype='text/xml')
 
 
@@ -1035,7 +1107,7 @@ def register_complete():
 # SECTION 3 — Voice Authentication (returning callers)
 # ===========================================================================
 
-VOICE_AUTH_THRESHOLD = 0.65  # start lower for 8kHz Twilio audio; tune with real calls
+VOICE_AUTH_THRESHOLD = 0.80  # calibrated: genuine ~0.86-0.88, impostor ~0.68-0.74 on 8kHz Twilio audio
 
 
 def verify_voice(stored_model_list, audio_path):
@@ -1074,36 +1146,20 @@ def _transcript_matches_challenge(challenge_phrase: str, response_text: str) -> 
     return ratio > 0.5
 
 
-AUTH_GREET = {
-    'hi': "Namaste {} ji! Apni awaaz se login karne ke liye yeh phrase dohraaiye: ",
-    'en': "Welcome back {}! Please repeat the following phrase to log in: ",
-    'ta': "Vanakkam {}! Login seivatharku indha vaarthaigalai thirumba sollunga: ",
-    'te': "Swaagatam {}! Login ki ee phrase repeat cheyyandi: ",
-    'kn': "Swagata {}! Login ge ee phrase repeat madi: ",
-    'ml': "Swagatam {}! Login cheyyaan ee phrase repeat cheyyoo: ",
-    'mr': "Swagat {}! Login sathi ha phrase punha sanga: ",
-    'bn': "Swagoto {}! Login er jonyo ei phrase abar bolun: ",
-    'gu': "Swagat {}! Login mate aa phrase repeat karo: ",
-}
-
-
 @app.route('/auth/greet', methods=['GET', 'POST'])
 def auth_greet():
     call_sid = request.values.get('CallSid')
     state = CALL_STATE[call_sid]
     lang = state.get('lang', 'hi')
-    name = state['user'].get('name', '')
     from config import ENROLLMENT_PHRASES
-    phrase = random.choice(ENROLLMENT_PHRASES.get(lang, ENROLLMENT_PHRASES['hi']))
-    state['auth_phrase'] = phrase
+    phrases = ENROLLMENT_PHRASES.get(lang, ENROLLMENT_PHRASES['hi'])
+    idx = random.randrange(len(phrases))
+    state['auth_phrase'] = phrases[idx]
     state['auth_attempts'] = state.get('auth_attempts', 0)
     CALL_STATE[call_sid] = state
-    greet_template = AUTH_GREET.get(lang, AUTH_GREET['en'])
-    full_text = greet_template.format(name) + phrase
-    audio_path = Path(f'dynamic_audio/auth_challenge_{call_sid}.wav')
-    save_tts(full_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/auth_challenge_{call_sid}.wav')
+    play(resp, lang, 'auth_greet')
+    resp.play(f'/audio/{lang}_auth_phrase_{idx}.wav')
     resp.record(action='/auth/verify', method='POST', max_length=8, play_beep=True, timeout=4)
     resp.redirect('/auth/greet')
     return Response(str(resp), mimetype='text/xml')
@@ -1111,6 +1167,7 @@ def auth_greet():
 
 @app.route('/auth/verify', methods=['GET', 'POST'])
 def auth_verify():
+    t_handler = time.perf_counter()
     call_sid = request.values.get('CallSid')
     recording_url = request.values.get('RecordingUrl', '')
     duration = int(request.values.get('RecordingDuration', 0))
@@ -1121,8 +1178,11 @@ def auth_verify():
         return redirect_to_prompt('/auth/greet')
     audio_path = f'dynamic_audio/auth_live_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
+    t_verify = time.perf_counter()
     voice_model = user.get('voice_model', [])
     authenticated, score = verify_voice(voice_model, audio_path)
+    print(f"   [TIMING] verify_voice took {time.perf_counter() - t_verify:.2f}s")
+    print(f"   [TIMING] /auth/verify total took {time.perf_counter() - t_handler:.2f}s")
     # Anti-replay check disabled: challenge is Roman transliteration but STT
     # returns native script (Devanagari etc.) so word-set intersection always 0.
     attempts = state.get('auth_attempts', 0) + 1
@@ -1138,23 +1198,8 @@ def auth_verify():
         # Keypad MPIN fallback — pre-populate state so /prompt-mpin can work
         state['phone'] = user.get('phone')
         CALL_STATE[call_sid] = state
-        fail_texts = {
-            'hi': "Awaaz pehchaan teen baar mein nakaam rahi. "
-                  "Keypad PIN se try karein.",
-            'en': "Voice authentication failed three times. "
-                  "Please use your keypad PIN instead.",
-            'ta': "Kural arival moonru murai thappu. Keypad PIN upayogippu.",
-            'te': "Voice auth moodu saarlu fail. Keypad PIN vadakandi.",
-            'kn': "Voice auth moonru bari fail. Keypad PIN upayogisi.",
-            'ml': "Voice auth moonnu thavana fail. Keypad PIN upayogikku.",
-            'mr': "Voice auth tin velaa fail. Keypad PIN vaapra.",
-            'bn': "Voice auth teen bar fail. Keypad PIN byabohar korun.",
-            'gu': "Voice auth tran vaar fail. Keypad PIN vaapo.",
-        }
-        fail_audio = Path(f'dynamic_audio/auth_fail_{call_sid}.wav')
-        save_tts(fail_texts.get(lang, fail_texts['en']), lang, fail_audio)
         resp = VoiceResponse()
-        resp.play(f'/dynamic-audio/auth_fail_{call_sid}.wav')
+        play(resp, lang, 'auth_fail')
         resp.redirect('/prompt-mpin')
         return Response(str(resp), mimetype='text/xml')
     else:
@@ -1164,38 +1209,6 @@ def auth_verify():
 # ===========================================================================
 # SECTION 6 — Contacts + Intent Extraction + Voice Command
 # ===========================================================================
-
-INTENT_SYSTEM_PROMPT = """You are a payment intent extractor for an Indian voice banking app.
-Extract payment intent from the user's spoken sentence.
-Return ONLY valid JSON: {"recipient": "<name/relationship or null>", "amount": <number or null>, "reason": "<string or null>"}
-If no payment intent, return {"recipient": null, "amount": null, "reason": null}
-The user speaks in Indian languages. Common relationship terms:
-bhatija/bhanja=nephew, beti/ladki=daughter, beta/ladka=son, bhai=brother,
-behen/didi=sister, dost/yaar=friend, papa/pita=father, mama/chacha=uncle,
-nana/dada=grandfather, nani/dadi=grandmother, chacha/mama=uncle, chachi/mami=aunt"""
-
-
-def extract_payment_intent(transcript: str) -> dict:
-    """Uses sarvam-m via sarvamai SDK for Indian-language intent extraction."""
-    try:
-        from sarvamai import SarvamAI
-        sarvam_client = SarvamAI(api_subscription_key=os.getenv('SARVAM_API_KEY'))
-        response = sarvam_client.chat.completions(
-            model="sarvam-m",
-            messages=[
-                {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-                {"role": "user", "content": transcript},
-            ],
-            temperature=0,
-            max_tokens=100,
-        )
-        result = json.loads(response.choices[0].message.content.strip())
-        print(f"[INTENT] Extracted: {result}")
-        return result
-    except Exception as e:
-        print(f"[INTENT] Extraction failed: {e}")
-        return {"recipient": None, "amount": None, "reason": None}
-
 
 def find_contact(user_phone: str, nickname: str):
     """Look up contact by nickname, handling Hindi oblique case."""
@@ -1211,7 +1224,105 @@ def find_contact(user_phone: str, nickname: str):
     for contact in contacts:
         if normalized in contact.get('nickname', '').lower():
             return contact
+        if normalized in contact.get('real_name', '').lower():
+            return contact
     return None
+
+
+def find_contact_in_text(user_phone: str, text: str):
+    """Check each saved contact's nickname/real_name against an English transcript."""
+    users = load_json('data/users.json')
+    contacts = users.get(user_phone, {}).get('contacts', [])
+    text_lower = text.lower()
+    for contact in contacts:
+        nickname = contact.get('nickname', '').lower().strip()
+        real_name = contact.get('real_name', '').lower().strip()
+        if nickname and nickname in text_lower:
+            return contact
+        if real_name and real_name in text_lower:
+            return contact
+    return None
+
+
+# Word-number parsing for spoken amounts like "five hundred rupees"
+NUMBER_WORDS = {
+    'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+    'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+    'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+    'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'seventy': 70,
+    'eighty': 80, 'ninety': 90,
+}
+NUMBER_MULTIPLIERS = {'hundred': 100, 'thousand': 1000, 'lakh': 100000, 'lac': 100000}
+
+
+def words_to_amount(text: str):
+    """Parse a spoken English number ('five hundred', 'two thousand five hundred') into an int."""
+    tokens = re.findall(r'[a-z]+', text.lower())
+    total = 0
+    current = 0
+    found = False
+    for tok in tokens:
+        if tok in NUMBER_WORDS:
+            current += NUMBER_WORDS[tok]
+            found = True
+        elif tok in NUMBER_MULTIPLIERS:
+            current = (current or 1) * NUMBER_MULTIPLIERS[tok]
+            total += current
+            current = 0
+            found = True
+    total += current
+    return total if found else None
+
+
+def classify_intent_fast(transcript: str) -> str:
+    """Regex/keyword intent classification over an English transcript, with a Groq fallback."""
+    t = transcript.lower()
+    if 'contact' in t and re.search(r'\b(add|save|new|create)\b', t):
+        return 'add_contact'
+    if re.search(r'\bbalance\b', t) or re.search(r'how much (money|do i have)', t):
+        return 'balance'
+    if re.search(r'\b(pay|send|transfer|give|wire)\b', t):
+        return 'payment'
+
+    result = groq_extract(transcript, 'intent')
+    return result.get('intent', 'other')
+
+
+def extract_amount_fast(transcript: str):
+    """Pull a rupee amount from an English transcript: digits, then word-numbers, then Groq fallback."""
+    digits = re.findall(r'\d+', transcript)
+    if digits:
+        return int(digits[0])
+
+    amount = words_to_amount(transcript)
+    if amount:
+        return amount
+
+    result = groq_extract(transcript, 'amount')
+    return result.get('amount')
+
+
+def extract_payment_intent_fast(transcript: str) -> dict:
+    """Pull recipient/amount/reason from an English transcript via regex, with a Groq fallback."""
+    amount = extract_amount_fast(transcript)
+
+    recipient = None
+    skip_words = {'the', 'a', 'an', 'send', 'pay', 'transfer', 'give', 'wire', 'rupees', 'rupee', 'rs'}
+    for word in re.findall(r'\b(?:to|for)\s+(?:my\s+)?([a-zA-Z]+)', transcript.lower()):
+        if word not in skip_words:
+            recipient = word
+            break
+
+    if recipient and amount is not None:
+        return {"recipient": recipient, "amount": amount, "reason": None}
+
+    result = groq_extract(transcript, 'payment')
+    return {
+        "recipient": recipient or result.get('recipient'),
+        "amount": amount if amount is not None else result.get('amount'),
+        "reason": result.get('reason'),
+    }
 
 
 CONFIRM_TEXTS = {
@@ -1234,6 +1345,16 @@ def build_confirm_text(name: str, amount, lang: str) -> str:
     return template.format(name, int(amount))
 
 
+def prompt_payment_confirm(resp, call_sid, lang, recipient_name, amount):
+    """Play 'Shall I send X rupees to Y?' and record the yes/no response."""
+    confirm_text = build_confirm_text(recipient_name, amount, lang)
+    audio_out = Path(f'dynamic_audio/pay_confirm_{call_sid}.wav')
+    save_tts(confirm_text, lang, audio_out)
+    resp.play(f'/dynamic-audio/pay_confirm_{call_sid}.wav')
+    resp.record(action='/payment-final-confirm', method='POST', max_length=4,
+                play_beep=True, timeout=4)
+
+
 @app.route('/voice-command', methods=['GET', 'POST'])
 def voice_command():
     """Receives free-speech recording from main menu digit 1, extracts intent."""
@@ -1244,8 +1365,8 @@ def voice_command():
     user = state.get('user', {})
     audio_path = f'dynamic_audio/cmd_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
-    transcript = speech_to_text(audio_path, lang)
-    intent = extract_payment_intent(transcript)
+    transcript = speech_to_text_english(audio_path)
+    intent = extract_payment_intent_fast(transcript)
     recipient_name = intent.get('recipient')
     amount = intent.get('amount')
     reason = intent.get('reason')
@@ -1254,6 +1375,7 @@ def voice_command():
         contact = find_contact(user.get('phone', ''), recipient_name)
         if contact:
             state['recipient'] = contact['phone']
+            state['recipient_name'] = contact['real_name']
             state['upi_amount'] = str(int(amount))
             state['payment_reason'] = reason
             CALL_STATE[call_sid] = state
@@ -1293,8 +1415,17 @@ def voice_payment_confirm():
     audio_path = f'dynamic_audio/confirm_yn_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
     answer = speech_to_text(audio_path, lang).lower()
-    confirmed = any(w in answer for w in ['haan', 'ha', 'yes', 'ho', 'sahi', 'bilkul', 'correct',
-                                           'aama', 'avunu', 'hovudu', 'aana'])
+    confirmed = any(w in answer for w in [
+        'haan', 'ha', 'yes', 'ho', 'sahi', 'bilkul', 'correct',
+        'aama', 'avunu', 'hovudu', 'aana',
+        'हाँ', 'हां', 'हा', 'जी', 'हो',
+        'হ্যাঁ', 'হ্যা', 'হা',
+        'ஆம்', 'ஆமா',
+        'అవును', 'అవు',
+        'ಹೌದು', 'ಹೌ',
+        'ആണ്', 'ആनൽ',
+        'હા', 'હાં',
+    ])
     resp = VoiceResponse()
     if confirmed:
         user_phone = state.get('phone')
@@ -1313,79 +1444,328 @@ def voice_payment_confirm():
                 )
             except Exception as e:
                 print(f"[SMS] Failed: {e}")
+            notify_guardians(state.get('user', {}), state.get('recipient_name', recipient), amount, new_balance)
             play(resp, lang, 'upi_success')
             bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
             bal_audio = Path(f'dynamic_audio/bal_{call_sid}.wav')
             if save_tts(bal_text, lang, bal_audio):
                 resp.play(f'/dynamic-audio/bal_{call_sid}.wav')
         else:
-            play(resp, lang, 'upi_failed')
+            play(resp, lang, 'insufficient_balance')
+            bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
+            bal_audio = Path(f'dynamic_audio/bal_{call_sid}.wav')
+            if save_tts(bal_text, lang, bal_audio):
+                resp.play(f'/dynamic-audio/bal_{call_sid}.wav')
         resp.redirect('/prompt-main-menu')
     else:
         resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
 
 
+# ---------------------------------------------------------------------------
+# Conversational payment flow — "How can I help you?" -> recipient -> amount -> pay
+# ---------------------------------------------------------------------------
+
+@app.route('/handle-intent', methods=['GET', 'POST'])
+def handle_intent():
+    """Open-ended response to 'How can I help you?' — classify and route."""
+    t_handler = time.perf_counter()
+    call_sid = request.values.get('CallSid')
+    recording_url = request.values.get('RecordingUrl', '')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'hi')
+    user = state.get('user', {})
+    audio_path = f'dynamic_audio/intent_{call_sid}.wav'
+    download_twilio_recording(recording_url, audio_path)
+    transcript = speech_to_text_english(audio_path)
+
+    resp = VoiceResponse()
+    if not transcript:
+        resp.redirect('/prompt-main-menu')
+        return Response(str(resp), mimetype='text/xml')
+
+    intent = classify_intent_fast(transcript)
+    print(f"   [TIMING] /handle-intent took {time.perf_counter() - t_handler:.2f}s")
+
+    if intent == 'payment':
+        # Try to resolve recipient + amount directly from the initial utterance
+        # (e.g. "I want to send 200rs to my sister") to skip the follow-up prompts.
+        intent_data = extract_payment_intent_fast(transcript)
+        amount = intent_data.get('amount')
+
+        recipient_phone = None
+        recipient_name = None
+
+        contact = find_contact_in_text(user.get('phone', ''), transcript)
+        if contact:
+            recipient_phone = contact['phone']
+            recipient_name = contact['real_name']
+        else:
+            nickname = intent_data.get('recipient')
+            if nickname:
+                digits_only = re.sub(r'\D', '', str(nickname))
+                if len(digits_only) == 10:
+                    recipient_phone = digits_only
+                    recip_user = get_user(recipient_phone)
+                    recipient_name = recip_user.get('name') if recip_user else recipient_phone
+                else:
+                    contact = find_contact(user.get('phone', ''), nickname)
+                    if contact:
+                        recipient_phone = contact['phone']
+                        recipient_name = contact['real_name']
+
+        if recipient_phone and amount:
+            state['recipient'] = recipient_phone
+            state['recipient_name'] = recipient_name
+            state['upi_amount'] = str(int(amount))
+            CALL_STATE[call_sid] = state
+            prompt_payment_confirm(resp, call_sid, lang, recipient_name, amount)
+        elif recipient_phone:
+            state['recipient'] = recipient_phone
+            state['recipient_name'] = recipient_name
+            CALL_STATE[call_sid] = state
+            play(resp, lang, 'how_much')
+            resp.record(action='/payment-amount', method='POST', max_length=6,
+                        play_beep=True, timeout=5)
+        else:
+            if amount:
+                state['upi_amount'] = str(int(amount))
+                CALL_STATE[call_sid] = state
+            play(resp, lang, 'who_to_pay')
+            resp.record(action='/payment-recipient', method='POST', max_length=10,
+                        play_beep=True, timeout=5)
+    elif intent == 'balance':
+        acc = get_account(user.get('account_id', ''))
+        balance = acc.get('balance', 0) if acc else 0
+        text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(balance))
+        audio_out = Path(f'dynamic_audio/bal_{call_sid}.wav')
+        if save_tts(text, lang, audio_out):
+            resp.play(f'/dynamic-audio/bal_{call_sid}.wav')
+        resp.redirect('/prompt-main-menu')
+    elif intent == 'add_contact':
+        return redirect_to_prompt('/contacts/add-name')
+    else:
+        play(resp, lang, 'not_understood')
+        resp.redirect('/prompt-main-menu')
+
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/payment-recipient', methods=['GET', 'POST'])
+def payment_recipient():
+    """Resolve the recipient from a spoken name (saved contact) or 10-digit number."""
+    t_handler = time.perf_counter()
+    call_sid = request.values.get('CallSid')
+    recording_url = request.values.get('RecordingUrl', '')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'hi')
+    user = state.get('user', {})
+    audio_path = f'dynamic_audio/recipient_{call_sid}.wav'
+    download_twilio_recording(recording_url, audio_path)
+
+    resp = VoiceResponse()
+
+    # Single translate-to-English STT call serves both digit parsing and name matching
+    transcript = speech_to_text_english(audio_path)
+    digits_only = re.sub(r'\D', '', transcript)
+
+    recipient_phone = None
+    recipient_name = None
+
+    if len(digits_only) == 10:
+        recipient_phone = digits_only
+        recip_user = get_user(recipient_phone)
+        recipient_name = recip_user.get('name') if recip_user else recipient_phone
+    else:
+        contact = find_contact_in_text(user.get('phone', ''), transcript)
+        if not contact:
+            intent = extract_payment_intent_fast(transcript)
+            nickname = intent.get('recipient')
+            contact = find_contact(user.get('phone', ''), nickname) if nickname else None
+        if contact:
+            recipient_phone = contact['phone']
+            recipient_name = contact['real_name']
+
+    print(f"   [TIMING] /payment-recipient took {time.perf_counter() - t_handler:.2f}s")
+
+    if not recipient_phone:
+        play(resp, lang, 'recipient_nf')
+        resp.redirect('/prompt-main-menu')
+        return Response(str(resp), mimetype='text/xml')
+
+    state['recipient'] = recipient_phone
+    state['recipient_name'] = recipient_name
+    CALL_STATE[call_sid] = state
+
+    # Amount may already be known if the caller said it in the same breath
+    # as the recipient (e.g. "200 to my sister") on the previous turn.
+    if state.get('upi_amount'):
+        prompt_payment_confirm(resp, call_sid, lang, recipient_name, float(state['upi_amount']))
+        return Response(str(resp), mimetype='text/xml')
+
+    play(resp, lang, 'how_much')
+    resp.record(action='/payment-amount', method='POST', max_length=6,
+                play_beep=True, timeout=5)
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/payment-amount', methods=['GET', 'POST'])
+def payment_amount():
+    """Resolve the rupee amount from spoken digits or free speech (regex + Groq fallback)."""
+    t_handler = time.perf_counter()
+    call_sid = request.values.get('CallSid')
+    recording_url = request.values.get('RecordingUrl', '')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'hi')
+    audio_path = f'dynamic_audio/amount_{call_sid}.wav'
+    download_twilio_recording(recording_url, audio_path)
+
+    resp = VoiceResponse()
+
+    transcript = speech_to_text_english(audio_path)
+    digits_only = re.sub(r'\D', '', transcript)
+
+    if digits_only:
+        amount = int(digits_only)
+    else:
+        amount = extract_amount_fast(transcript)
+
+    print(f"   [TIMING] /payment-amount took {time.perf_counter() - t_handler:.2f}s")
+
+    if not amount or amount <= 0:
+        play(resp, lang, 'amount_nu')
+        resp.redirect('/prompt-main-menu')
+        return Response(str(resp), mimetype='text/xml')
+
+    state['upi_amount'] = str(int(amount))
+    CALL_STATE[call_sid] = state
+
+    prompt_payment_confirm(resp, call_sid, lang, state.get('recipient_name', ''), amount)
+    return Response(str(resp), mimetype='text/xml')
+
+
+def notify_guardians(user, recipient_name, amount, new_balance):
+    """SMS each registered guardian when the ward makes a payment."""
+    guardians = user.get('guardians', [])
+    if not guardians:
+        return
+    ward_name = user.get('name', 'Aapka ward')
+    body = (f"SwaramPay: {ward_name} ne {recipient_name} ko Rs {amount} bheja hai. "
+            f"Naya balance: Rs {int(new_balance)}.")
+    try:
+        twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
+        for guardian_phone in guardians:
+            twilio_client.messages.create(
+                body=body, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{guardian_phone}'
+            )
+    except Exception as e:
+        print(f"[SMS] Guardian notify failed: {e}")
+
+
+def complete_payment(resp, call_sid, state, lang):
+    """Execute the UPI transfer, send an SMS notification, and play success/failure prompts."""
+    user_phone = state.get('phone')
+    amount = state.get('upi_amount', '0')
+    recipient = state.get('recipient')
+    recipient_name = state.get('recipient_name', '')
+    success, new_balance = perform_upi_transaction(
+        user_phone, amount, desc=f"Sent to {recipient_name}"
+    )
+    if success:
+        try:
+            twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
+            twilio_client.messages.create(
+                body=f"SwaramPay: Aapke paas Rs {amount} aaye hain {state.get('user', {}).get('name', '')} ki taraf se.",
+                from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{recipient}'
+            )
+        except Exception as e:
+            print(f"[SMS] Failed: {e}")
+        notify_guardians(state.get('user', {}), recipient_name, amount, new_balance)
+        play(resp, lang, 'upi_success')
+        bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
+        bal_audio = Path(f'dynamic_audio/bal_{call_sid}.wav')
+        if save_tts(bal_text, lang, bal_audio):
+            resp.play(f'/dynamic-audio/bal_{call_sid}.wav')
+    else:
+        play(resp, lang, 'insufficient_balance')
+        bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
+        bal_audio = Path(f'dynamic_audio/bal_{call_sid}.wav')
+        if save_tts(bal_text, lang, bal_audio):
+            resp.play(f'/dynamic-audio/bal_{call_sid}.wav')
+
+
+@app.route('/payment-final-confirm', methods=['GET', 'POST'])
+def payment_final_confirm():
+    t_handler = time.perf_counter()
+    call_sid = request.values.get('CallSid')
+    recording_url = request.values.get('RecordingUrl', '')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'hi')
+    audio_path = f'dynamic_audio/pay_yn_{call_sid}.wav'
+    download_twilio_recording(recording_url, audio_path)
+    answer = speech_to_text(audio_path, lang).lower()
+    confirmed = any(w in answer for w in YES_WORDS)
+    print(f"   [TIMING] /payment-final-confirm took {time.perf_counter() - t_handler:.2f}s")
+
+    resp = VoiceResponse()
+    if confirmed:
+        amount = float(state.get('upi_amount', '0'))
+        if amount > 500:
+            state['mpin_attempts'] = 0
+            CALL_STATE[call_sid] = state
+            return redirect_to_prompt('/payment-mpin-verify')
+        complete_payment(resp, call_sid, state, lang)
+    resp.redirect('/prompt-main-menu')
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/payment-mpin-verify', methods=['GET', 'POST'])
+def payment_mpin_verify():
+    call_sid = request.values.get('CallSid')
+    lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
+    resp = VoiceResponse()
+    gather = Gather(num_digits=4, action='/payment-mpin-submit', method='POST', timeout=15)
+    play(gather, lang, 'enter_mpin')
+    resp.append(gather)
+    resp.redirect('/payment-mpin-verify')
+    return Response(str(resp), mimetype='text/xml')
+
+
+@app.route('/payment-mpin-submit', methods=['GET', 'POST'])
+def payment_mpin_submit():
+    call_sid = request.values.get('CallSid')
+    mpin = request.values.get('Digits', '')
+    state = CALL_STATE.get(call_sid, {})
+    lang = state.get('lang', 'hi')
+    user = state.get('user', {})
+
+    resp = VoiceResponse()
+    if user.get('pin') and user.get('pin') == mpin:
+        complete_payment(resp, call_sid, state, lang)
+        resp.redirect('/prompt-main-menu')
+        return Response(str(resp), mimetype='text/xml')
+
+    attempts = state.get('mpin_attempts', 0) + 1
+    state['mpin_attempts'] = attempts
+    CALL_STATE[call_sid] = state
+    if attempts >= 3:
+        play(resp, lang, 'upi_failed')
+        resp.redirect('/prompt-main-menu')
+        return Response(str(resp), mimetype='text/xml')
+
+    play(resp, lang, 'wrong_mpin')
+    resp.redirect('/payment-mpin-verify')
+    return Response(str(resp), mimetype='text/xml')
+
+
 # Contact-add routes
-
-CONTACT_NAME_PROMPTS = {
-    'hi': "Unka naam ya rishta boliye. Jaise bhatija, beti, ya dost.",
-    'en': "Please say their name or relationship. For example: nephew, daughter, or friend.",
-    'ta': "Avanga peyar ya uravu solunga. Udaharanam: marumagal, magal.",
-    'te': "Vaari peru leda sambandham cheppandi. Udaharnamu: bhanjaa, kuthuru.",
-    'kn': "Avara hesaru athava sambandha heli. Udaharana: bhanje, magalu.",
-    'ml': "Avante peru athava bandham parayan. Udaharanam: bhatajar, magal.",
-    'mr': "Tyanche naav kinva nate sanga. Udaharana: bhachya, mulgi.",
-    'bn': "Oder naam ba sambondho bolun. Uddaharon: bhagne, meye.",
-    'gu': "Tena naam ke sambandh kaho. Uddaharan: bhatijo, dikri.",
-}
-
-CONTACT_NUMBER_PROMPTS = {
-    'hi': "Unka 10 ank ka number boliye.",
-    'en': "Please say their 10-digit mobile number.",
-    'ta': "Avanga 10 ilakka number sollunga.",
-    'te': "Vaari 10 digits number cheppandi.",
-    'kn': "Avara 10 ankidha sankhya heli.",
-    'ml': "Avante 10 digit number parayan.",
-    'mr': "Tyanche 10 ankee number sanga.",
-    'bn': "Oder 10 sankhyar number bolun.",
-    'gu': "Tena 10 ank no number kaho.",
-}
-
-CONTACT_DTMF_PROMPTS = {
-    'hi': "Keypad se unka 10 ank ka number daalen.",
-    'en': "Please enter their 10-digit number on the keypad.",
-    'ta': "Keypad il avanga number type pannunga.",
-    'te': "Keypad lo vaari number enter cheyyandi.",
-    'kn': "Keypad nali avara number enter madi.",
-    'ml': "Keypad il avante number enter cheyyoo.",
-    'mr': "Keypad var tyanche number taaka.",
-    'bn': "Keypad e oder number din.",
-    'gu': "Keypad par tena number nakhho.",
-}
-
-CONTACT_SAVED_PROMPTS = {
-    'hi': "Contact save ho gaya.",
-    'en': "Contact saved successfully.",
-    'ta': "Contact save aanathu.",
-    'te': "Contact save ayyindi.",
-    'kn': "Contact save aayithu.",
-    'ml': "Contact save cheythu.",
-    'mr': "Contact save zhala.",
-    'bn': "Contact save hoyeche.",
-    'gu': "Contact save thayo.",
-}
-
 
 @app.route('/contacts/add-name', methods=['GET', 'POST'])
 def contacts_add_name():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
-    prompt_text = CONTACT_NAME_PROMPTS.get(lang, CONTACT_NAME_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/contact_name_prompt_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/contact_name_prompt_{call_sid}.wav')
+    play(resp, lang, 'contact_name')
     resp.record(action='/contacts/add-name-submit', method='POST',
                 max_length=6, finish_on_key='#', play_beep=True, timeout=4)
     resp.redirect('/prompt-main-menu')
@@ -1412,11 +1792,8 @@ def contacts_add_name_submit():
 def contacts_add_number():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
-    prompt_text = CONTACT_NUMBER_PROMPTS.get(lang, CONTACT_NUMBER_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/contact_num_prompt_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/contact_num_prompt_{call_sid}.wav')
+    play(resp, lang, 'contact_number')
     resp.record(action='/contacts/add-number-submit', method='POST',
                 max_length=10, play_beep=True, timeout=6)
     resp.redirect('/contacts/add-number')
@@ -1431,7 +1808,8 @@ def contacts_add_number_submit():
     lang = state.get('lang', 'hi')
     audio_path = f'dynamic_audio/contact_num_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
-    transcript = speech_to_text(audio_path, lang)
+    # Force English STT for number capture
+    transcript = speech_to_text(audio_path, 'en')
     digits_only = re.sub(r'\D', '', transcript)
     if len(digits_only) != 10:
         # Fallback to DTMF
@@ -1445,13 +1823,10 @@ def contacts_add_number_submit():
 def contacts_add_number_keypad():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
-    prompt_text = CONTACT_DTMF_PROMPTS.get(lang, CONTACT_DTMF_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/contact_dtmf_{call_sid}.wav')
-    save_tts(prompt_text, lang, audio_path)
     resp = VoiceResponse()
     gather = Gather(num_digits=10, action='/contacts/add-number-keypad-submit',
                     method='POST', timeout=15)
-    resp.play(f'/dynamic-audio/contact_dtmf_{call_sid}.wav')
+    play(resp, lang, 'contact_dtmf')
     resp.append(gather)
     resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
@@ -1493,11 +1868,8 @@ def contacts_add_complete():
             # Update in-memory state user object too
             state['user'] = users[user_phone]
             CALL_STATE[call_sid] = state
-    saved_text = CONTACT_SAVED_PROMPTS.get(lang, CONTACT_SAVED_PROMPTS['en'])
-    audio_path = Path(f'dynamic_audio/contact_saved_{call_sid}.wav')
-    save_tts(saved_text, lang, audio_path)
     resp = VoiceResponse()
-    resp.play(f'/dynamic-audio/contact_saved_{call_sid}.wav')
+    play(resp, lang, 'contact_saved')
     resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
 
@@ -1592,13 +1964,18 @@ def companion_dashboard():
     accounts = load_json('data/accounts.json')
     linked_wallets = []
     for phone, user in users.items():
-        if guardian_phone in user.get('guardians', []):
+        is_self = phone == guardian_phone
+        is_guardian = guardian_phone in user.get('guardians', [])
+        if is_guardian or is_self:
             acc = accounts.get(user.get('account_id', ''), {})
+            transactions = acc.get('transactions', [])
             linked_wallets.append({
                 'name': user['name'],
                 'phone': phone,
                 'balance': acc.get('balance', 0),
-                'recent': acc.get('transactions', [])[-3:],
+                'recent': transactions[-3:],
+                'history': list(reversed(transactions)) if is_self else [],
+                'is_self': is_self,
             })
     return render_template('companion/dashboard.html', wallets=linked_wallets)
 
@@ -1617,7 +1994,8 @@ def companion_add_money():
         return jsonify({'error': 'Amount must be between 1 and 50000'}), 400
     users = load_json('data/users.json')
     target_user = users.get(target_phone, {})
-    if guardian_phone not in target_user.get('guardians', []):
+    is_self = target_phone == guardian_phone
+    if not is_self and guardian_phone not in target_user.get('guardians', []):
         return jsonify({'error': 'Unauthorized'}), 403
     accounts = load_json('data/accounts.json')
     acc_id = target_user.get('account_id')
@@ -1648,4 +2026,4 @@ def companion_add_money():
 # ===========================================================================
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
