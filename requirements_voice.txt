@@ -15,3 +15,6 @@ scipy>=1.10.0          # needed for --simulate-twilio in test_comparison.py
 
 # --- Mic recording (only needed for test_comparison.py --generate-test-audio) ---
 sounddevice>=0.4.6
+
+# --- MongoDB Atlas storage + vector search for voice embeddings ---
+pymongo>=4.7.0         # >=4.7 required for create_search_index / SearchIndexModel
