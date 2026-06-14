@@ -405,8 +405,8 @@ def submit_upi_success():
                     from_=os.getenv('TWILIO_PHONE_NUMBER'),
                     to=f'+91{recip}'
                 )
-        except Exception as e:
-            print(f"[SMS] Failed: {e}")
+        except Exception:
+            pass
         play(resp, lang, 'upi_success')
         text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
         audio_path = Path(f'dynamic_audio/bal_{call_sid}.wav')
@@ -573,7 +573,7 @@ def mentor_listen():
     resp = VoiceResponse()
     resp.say(".")
     resp.record(action='/mentor/process', method='POST', max_length=30,
-                finish_on_key='#', play_beep=True, timeout=5)
+                finish_on_key='#', play_beep=True, timeout=4)
     resp.redirect('/mentor/listen')
     return Response(str(resp), mimetype='text/xml')
 
@@ -642,7 +642,7 @@ def mentor_respond():
     except Exception:
         resp.say(followup_texts.get(lang, followup_texts['en']))
     resp.record(action='/mentor/process', method='POST', max_length=30,
-                finish_on_key='*', play_beep=True, timeout=5)
+                finish_on_key='*', play_beep=True, timeout=4)
     resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
 
@@ -752,7 +752,7 @@ def register_name():
     resp = VoiceResponse()
     resp.play(f'/audio/{lang}_reg_name_prompt.wav')
     resp.record(action='/register/name-submit', method='POST',
-                max_length=6, finish_on_key='#', play_beep=True, timeout=4)
+                max_length=6, finish_on_key='#', play_beep=True, timeout=3)
     resp.redirect('/register/name')
     return Response(str(resp), mimetype='text/xml')
 
@@ -899,8 +899,9 @@ def register_mpin_setup():
     call_sid = request.values.get('CallSid')
     lang = CALL_STATE.get(call_sid, {}).get('lang', 'hi')
     resp = VoiceResponse()
+    play(resp, lang, 'mpin_setup')
+    resp.pause(length=1)
     gather = Gather(num_digits=4, action='/register/mpin-confirm', method='POST', timeout=15)
-    play(gather, lang, 'mpin_setup')
     resp.append(gather)
     resp.redirect('/register/mpin-setup')
     return Response(str(resp), mimetype='text/xml')
@@ -917,8 +918,9 @@ def register_mpin_confirm():
     state['pending_mpin'] = digits
     CALL_STATE[call_sid] = state
     resp = VoiceResponse()
+    play(resp, lang, 'mpin_confirm')
+    resp.pause(length=1)
     gather = Gather(num_digits=4, action='/register/mpin-verify', method='POST', timeout=15)
-    play(gather, lang, 'mpin_confirm')
     resp.append(gather)
     resp.redirect('/register/mpin-setup')
     return Response(str(resp), mimetype='text/xml')
@@ -954,12 +956,12 @@ def register_guardian_prompt():
             from_=os.getenv('TWILIO_PHONE_NUMBER'),
             to=f'+91{phone}'
         )
-    except Exception as e:
-        print(f"[SMS] Failed to send portal link: {e}")
+    except Exception:
+        pass
     resp = VoiceResponse()
     resp.play(f'/audio/{lang}_guardian_ask.wav')
     resp.record(action='/register/guardian-yn-submit', method='POST',
-                max_length=4, play_beep=False, timeout=4)
+                max_length=4, play_beep=False, timeout=2)
     resp.redirect('/register/complete')
     return Response(str(resp), mimetype='text/xml')
 
@@ -992,7 +994,7 @@ def register_guardian_number_prompt():
     resp = VoiceResponse()
     resp.play(f'/audio/{lang}_guardian_number_ask.wav')
     resp.record(action='/register/guardian-number-submit', method='POST',
-                max_length=10, play_beep=True, timeout=6)
+                max_length=10, play_beep=True, timeout=3)
     resp.redirect('/register/guardian-keypad')
     return Response(str(resp), mimetype='text/xml')
 
@@ -1028,7 +1030,7 @@ def register_guardian_number_submit():
     resp = VoiceResponse()
     resp.play(f'/dynamic-audio/guardian_confirm_{call_sid}.wav')
     resp.record(action='/register/guardian-confirm-submit', method='POST',
-                max_length=4, play_beep=True, timeout=4)
+                max_length=4, play_beep=True, timeout=2)
     return Response(str(resp), mimetype='text/xml')
 
 
@@ -1093,8 +1095,8 @@ def register_guardian_confirm_submit():
                 from_=os.getenv('TWILIO_PHONE_NUMBER'),
                 to=f'+91{guardian_phone}'
             )
-        except Exception as e:
-            print(f"[SMS] Guardian invite failed: {e}")
+        except Exception:
+            pass
     else:
         state['guardians'] = []
         CALL_STATE[call_sid] = state
@@ -1443,6 +1445,8 @@ def classify_intent_fast(transcript: str) -> str:
         return 'balance'
     if re.search(r'\b(pay|send|transfer|give|wire)\b', t):
         return 'payment'
+    if re.search(r'\b(financial|finance|invest|loan|saving|advice|advise|help|assist|question|ask)\b', t):
+        return 'financial_advice'
 
     result = groq_extract(transcript, 'intent')
     return result.get('intent', 'other')
@@ -1522,7 +1526,7 @@ def prompt_payment_confirm(resp, call_sid, lang, recipient_name, amount):
     save_tts(confirm_text, lang, audio_out)
     resp.play(f'/dynamic-audio/pay_confirm_{call_sid}.wav')
     resp.record(action='/payment-final-confirm', method='POST', max_length=4,
-                play_beep=True, timeout=4)
+                play_beep=True, timeout=2)
 
 
 @app.route('/voice-command', methods=['GET', 'POST'])
@@ -1554,7 +1558,7 @@ def voice_command():
             save_tts(confirm_text, lang, audio_confirm)
             resp.play(f'/dynamic-audio/pay_confirm_{call_sid}.wav')
             resp.record(action='/voice-payment-confirm', method='POST',
-                        max_length=4, play_beep=True, timeout=4)
+                        max_length=4, play_beep=True, timeout=2)
         else:
             not_found = {
                 'hi': f"{recipient_name} aapke contacts mein nahi mila. Number keypad se daalein.",
@@ -1612,8 +1616,8 @@ def voice_payment_confirm():
                 twilio_client.messages.create(
                     body=msg, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{recipient}'
                 )
-            except Exception as e:
-                print(f"[SMS] Failed: {e}")
+            except Exception:
+                pass
             notify_guardians(state.get('user', {}), state.get('recipient_name', recipient), amount, new_balance)
             play(resp, lang, 'upi_success')
             bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
@@ -1714,6 +1718,8 @@ def handle_intent():
         resp.redirect('/prompt-main-menu')
     elif intent == 'add_contact':
         return redirect_to_prompt('/contacts/add-name')
+    elif intent == 'financial_advice':
+        return redirect_to_prompt('/mentor/start')
     else:
         play(resp, lang, 'not_understood')
         resp.redirect('/prompt-main-menu')
@@ -1834,8 +1840,8 @@ def notify_guardians(user, recipient_name, amount, new_balance):
             twilio_client.messages.create(
                 body=body, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{phone}'
             )
-    except Exception as e:
-        print(f"[SMS] Payment notify failed: {e}")
+    except Exception:
+        pass
 
 
 def complete_payment(resp, call_sid, state, lang):
@@ -1854,8 +1860,8 @@ def complete_payment(resp, call_sid, state, lang):
                 body=f"SwaramPay: Aapke paas Rs {amount} aaye hain {state.get('user', {}).get('name', '')} ki taraf se.",
                 from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{recipient}'
             )
-        except Exception as e:
-            print(f"[SMS] Failed: {e}")
+        except Exception:
+            pass
         notify_guardians(state.get('user', {}), recipient_name, amount, new_balance)
         play(resp, lang, 'upi_success')
         bal_text = BALANCE_TEMPLATE.get(lang, BALANCE_TEMPLATE['en']).format(int(new_balance))
@@ -1943,7 +1949,7 @@ def contacts_add_name():
     resp = VoiceResponse()
     play(resp, lang, 'contact_name')
     resp.record(action='/contacts/add-name-submit', method='POST',
-                max_length=6, finish_on_key='#', play_beep=True, timeout=4)
+                max_length=6, finish_on_key='#', play_beep=True, timeout=3)
     resp.redirect('/prompt-main-menu')
     return Response(str(resp), mimetype='text/xml')
 
@@ -1971,7 +1977,7 @@ def contacts_add_number():
     resp = VoiceResponse()
     play(resp, lang, 'contact_number')
     resp.record(action='/contacts/add-number-submit', method='POST',
-                max_length=10, play_beep=True, timeout=6)
+                max_length=10, play_beep=True, timeout=3)
     resp.redirect('/contacts/add-number')
     return Response(str(resp), mimetype='text/xml')
 
