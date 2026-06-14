@@ -838,7 +838,7 @@ def register_voice_enroll_phrase():
     resp = VoiceResponse()
     resp.play(f'/audio/{lang}_enroll_phrase_{idx}.wav')
     resp.record(action='/register/voice-enroll-record', method='POST',
-                max_length=8, play_beep=True, timeout=4)
+                max_length=8, play_beep=True, timeout=2)
     resp.redirect('/register/voice-enroll-phrase')  # timeout fallback
     return Response(str(resp), mimetype='text/xml')
 
@@ -1012,6 +1012,10 @@ def register_guardian_number_submit():
     # Force English STT for number capture — digits are spoken in English across all languages
     transcript = speech_to_text(audio_path, 'en')
     digits_only = re.sub(r'\D', '', transcript)
+    if len(digits_only) != 10:
+        spoken_digits = words_to_phone_digits(transcript)
+        if len(spoken_digits) == 10:
+            digits_only = spoken_digits
     if len(digits_only) != 10:
         # Voice didn't yield 10 digits — fall back to DTMF keypad
         return redirect_to_prompt('/register/guardian-keypad')
@@ -1187,7 +1191,7 @@ def auth_greet():
     resp = VoiceResponse()
     play(resp, lang, 'auth_greet')
     resp.play(f'/audio/{lang}_auth_phrase_{idx}.wav')
-    resp.record(action='/auth/verify', method='POST', max_length=8, play_beep=True, timeout=4)
+    resp.record(action='/auth/verify', method='POST', max_length=8, play_beep=True, timeout=2)
     resp.redirect('/auth/greet')
     return Response(str(resp), mimetype='text/xml')
 
@@ -1368,6 +1372,66 @@ def words_to_amount(text: str):
             found = True
     total += current
     return total if found else None
+
+
+# Spoken-digit vocabulary for phone numbers — translate-to-English STT often
+# spells out digits as words ("Seven seven three one...") instead of numerals.
+_DIGIT_WORD_MAP = {
+    'zero': '0', 'oh': '0', 'o': '0', 'nought': '0',
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+}
+_TEEN_DIGITS = {
+    'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13', 'fourteen': '14',
+    'fifteen': '15', 'sixteen': '16', 'seventeen': '17', 'eighteen': '18', 'nineteen': '19',
+}
+_TENS_DIGITS = {
+    'twenty': '2', 'thirty': '3', 'forty': '4', 'fifty': '5',
+    'sixty': '6', 'seventy': '7', 'eighty': '8', 'ninety': '9',
+}
+_REPEAT_WORDS = {'double': 2, 'triple': 3, 'treble': 3}
+
+
+def words_to_phone_digits(text: str) -> str:
+    """
+    Concatenate spoken digit-words into a digit string, e.g.
+    'Seven seven three one nine eight three six eight five.' -> '7731983685'.
+    Handles literal digits already in the transcript, teens ('eighteen' -> '18'),
+    tens+ones pairs ('ninety eight' -> '98'), and 'double'/'triple' repetition.
+    Caller should check len(result) == 10. Returns '' if nothing recognizable.
+    """
+    tokens = re.findall(r'[a-zA-Z]+|\d+', text.lower())
+    digits = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.isdigit():
+            digits.append(tok)
+            i += 1
+            continue
+        if tok in _REPEAT_WORDS and i + 1 < len(tokens) and tokens[i + 1] in _DIGIT_WORD_MAP:
+            digits.append(_DIGIT_WORD_MAP[tokens[i + 1]] * _REPEAT_WORDS[tok])
+            i += 2
+            continue
+        if tok in _TENS_DIGITS:
+            nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+            if nxt in _DIGIT_WORD_MAP and _DIGIT_WORD_MAP[nxt] != '0':
+                digits.append(_TENS_DIGITS[tok] + _DIGIT_WORD_MAP[nxt])
+                i += 2
+                continue
+            digits.append(_TENS_DIGITS[tok] + '0')
+            i += 1
+            continue
+        if tok in _TEEN_DIGITS:
+            digits.append(_TEEN_DIGITS[tok])
+            i += 1
+            continue
+        if tok in _DIGIT_WORD_MAP:
+            digits.append(_DIGIT_WORD_MAP[tok])
+            i += 1
+            continue
+        i += 1
+    return ''.join(digits)
 
 
 def classify_intent_fast(transcript: str) -> str:
@@ -1674,6 +1738,12 @@ def payment_recipient():
     # Single translate-to-English STT call serves both digit parsing and name matching
     transcript = speech_to_text_english(audio_path)
     digits_only = re.sub(r'\D', '', transcript)
+    if len(digits_only) != 10:
+        # Translate-to-English STT often spells digits out as words
+        # ("Seven seven three one..."); try concatenating those.
+        spoken_digits = words_to_phone_digits(transcript)
+        if len(spoken_digits) == 10:
+            digits_only = spoken_digits
 
     recipient_phone = None
     recipient_name = None
@@ -1917,6 +1987,10 @@ def contacts_add_number_submit():
     # Force English STT for number capture
     transcript = speech_to_text(audio_path, 'en')
     digits_only = re.sub(r'\D', '', transcript)
+    if len(digits_only) != 10:
+        spoken_digits = words_to_phone_digits(transcript)
+        if len(spoken_digits) == 10:
+            digits_only = spoken_digits
     if len(digits_only) != 10:
         # Fallback to DTMF
         return redirect_to_prompt('/contacts/add-number-keypad')

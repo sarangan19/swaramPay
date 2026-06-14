@@ -11,6 +11,16 @@ from speechbrain.utils.fetching import LocalStrategy
 
 _classifier = None
 
+# Use MPS on Apple Silicon, fall back to CPU everywhere else
+if torch.backends.mps.is_available():
+    _DEVICE = torch.device("mps")
+elif torch.cuda.is_available():
+    _DEVICE = torch.device("cuda")
+else:
+    _DEVICE = torch.device("cpu")
+
+print(f"[voice_auth] using device: {_DEVICE}")
+
 
 def load_classifier():
     """Load the ECAPA-TDNN model once. Call at startup (3-5s cold start)."""
@@ -20,6 +30,7 @@ def load_classifier():
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir="pretrained_models/spkrec-ecapa-voxceleb",
             local_strategy=LocalStrategy.COPY,
+            run_opts={"device": str(_DEVICE)},
         )
     return _classifier
 
@@ -31,12 +42,12 @@ def get_embedding(audio_path: str):
     signal = torch.from_numpy(data)
     if signal.ndim > 1:
         signal = signal.mean(dim=1)
-    signal = signal.unsqueeze(0)
+    signal = signal.unsqueeze(0).to(_DEVICE)
     if sr != 16000:
         signal = torchaudio.functional.resample(signal, sr, 16000)
     with torch.no_grad():
         embedding = classifier.encode_batch(signal)
-    return embedding.squeeze().tolist()
+    return embedding.squeeze().cpu().tolist()
 
 
 def cosine_similarity(a, b) -> float:
