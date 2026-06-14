@@ -952,7 +952,7 @@ def register_guardian_prompt():
     try:
         twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
         twilio_client.messages.create(
-            body=f"SwaramPay: Aapka wallet tayaar hai! Companion portal: {os.getenv('SERVER_BASE_URL', '')}/companion",
+            body=f"SwaramPay: Your wallet is ready! Access the companion portal: {os.getenv('SERVER_BASE_URL', '')}/companion",
             from_=os.getenv('TWILIO_PHONE_NUMBER'),
             to=f'+91{phone}'
         )
@@ -1063,8 +1063,8 @@ def register_guardian_keypad_submit():
         twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
         name = state.get('name', 'Your ward')
         twilio_client.messages.create(
-            body=f"{name} ne aapko SwaramPay guardian banaya hai. "
-                 f"Login karein: {os.getenv('SERVER_BASE_URL', '')}/companion",
+            body=f"{name} has added you as a SwaramPay guardian. "
+                 f"Login here: {os.getenv('SERVER_BASE_URL', '')}/companion",
             from_=os.getenv('TWILIO_PHONE_NUMBER'),
             to=f'+91{digits}'
         )
@@ -1090,8 +1090,8 @@ def register_guardian_confirm_submit():
         try:
             twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
             twilio_client.messages.create(
-                body=f"{state['name']} ne aapko SwaramPay guardian banaya hai. "
-                     f"Login karein: {os.getenv('SERVER_BASE_URL', '')}/companion",
+                body=f"{state['name']} has added you as a SwaramPay guardian. "
+                     f"Login here: {os.getenv('SERVER_BASE_URL', '')}/companion",
                 from_=os.getenv('TWILIO_PHONE_NUMBER'),
                 to=f'+91{guardian_phone}'
             )
@@ -1610,9 +1610,9 @@ def voice_payment_confirm():
         if success:
             try:
                 twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
-                msg = f"SwaramPay: Aapke paas Rs {amount} aaye hain {state.get('user', {}).get('name', '')} ki taraf se."
+                msg = f"SwaramPay: You received Rs {amount} from {state.get('user', {}).get('name', '')}."
                 if reason:
-                    msg += f" {reason.capitalize()} ke liye!"
+                    msg += f" For: {reason.capitalize()}!"
                 twilio_client.messages.create(
                     body=msg, from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{recipient}'
                 )
@@ -1831,8 +1831,8 @@ def notify_guardians(user, recipient_name, amount, new_balance):
     ward_name = user.get('name', 'Aapka')
     ward_phone = user.get('phone')
     guardians = user.get('guardians', [])
-    body = (f"SwaramPay: {ward_name} ne {recipient_name} ko Rs {amount} bheja hai. "
-            f"Naya balance: Rs {int(new_balance)}.")
+    body = (f"SwaramPay: {ward_name} sent Rs {amount} to {recipient_name}. "
+            f"New balance: Rs {int(new_balance)}.")
     try:
         twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
         recipients = ([ward_phone] if ward_phone else []) + guardians
@@ -1857,7 +1857,7 @@ def complete_payment(resp, call_sid, state, lang):
         try:
             twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
             twilio_client.messages.create(
-                body=f"SwaramPay: Aapke paas Rs {amount} aaye hain {state.get('user', {}).get('name', '')} ki taraf se.",
+                body=f"SwaramPay: You received Rs {amount} from {state.get('user', {}).get('name', '')}.",
                 from_=os.getenv('TWILIO_PHONE_NUMBER'), to=f'+91{recipient}'
             )
         except Exception:
