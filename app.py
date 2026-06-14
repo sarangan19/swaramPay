@@ -1197,11 +1197,14 @@ def auth_verify():
     t_handler = time.perf_counter()
     call_sid = request.values.get('CallSid')
     recording_url = request.values.get('RecordingUrl', '')
-    duration = int(request.values.get('RecordingDuration', 0))
-    state = CALL_STATE[call_sid]
+    duration = int(request.values.get('RecordingDuration') or 0)
+    state = CALL_STATE.get(call_sid)
+    if state is None:
+        print(f"[AUTH] No call state for {call_sid} — restarting auth flow")
+        return redirect_to_prompt('/auth/greet')
     lang = state.get('lang', 'hi')
     user = state.get('user', {})
-    if duration < 1:
+    if duration < 1 or not recording_url:
         return redirect_to_prompt('/auth/greet')
     audio_path = f'dynamic_audio/auth_live_{call_sid}.wav'
     download_twilio_recording(recording_url, audio_path)
@@ -1249,9 +1252,28 @@ RELATION_TERMS = {
     'niece': {'bhatiji', 'भतीजी'},
     'son': {'beta', 'बेटा'},
     'daughter': {'beti', 'बेटी'},
-    'brother': {'bhai', 'भाई'},
-    'sister': {'behan', 'behen', 'बहन'},
-    'elder sister': {'didi', 'दीदी'},
+    'brother': {
+        'bhai', 'भाई', 'ভাই', 'ભાઈ',
+        'sagodharan', 'சகோதரன்', 'sodarudu', 'సోదరుడు',
+        'sodara', 'ಸೋದರ', 'sahodaran', 'സഹോദരൻ',
+    },
+    'elder brother': {
+        'anna', 'அண்ணா', 'அண்ணன்', 'అన్న', 'ಅಣ್ಣ', 'chettan', 'ചേട്ടൻ', 'dada', 'দাদা',
+    },
+    'younger brother': {
+        'thambi', 'தம்பி', 'thammudu', 'తమ్ముడు', 'tamma', 'ತಮ್ಮ', 'anujan', 'അനുജൻ',
+    },
+    'sister': {
+        'behan', 'behen', 'बहन', 'বোন', 'બહેન',
+        'sagodhari', 'சகோதரி', 'sodari', 'సోదరి', 'ಸೋದರಿ', 'sahodari', 'സഹോദരി',
+    },
+    'elder sister': {
+        'didi', 'दीदी', 'দিদি',
+        'akka', 'அக்கா', 'అక్క', 'ಅಕ್ಕ', 'chechi', 'ചേച്ചി',
+    },
+    'younger sister': {
+        'thangai', 'தங்கை', 'chelli', 'చెల్లి', 'tangi', 'ತಂಗಿ', 'anujathi', 'അനുജത്തി',
+    },
     'friend': {'dost', 'दोस्त'},
     'mother': {'maa', 'mummy', 'मां', 'मम्मी'},
     'father': {'papa', 'baba', 'पापा', 'बाबा'},
@@ -1296,6 +1318,7 @@ def find_contact_in_text(user_phone: str, text: str):
     users = load_json('data/users.json')
     contacts = users.get(user_phone, {}).get('contacts', [])
     text_lower = text.lower()
+    text_words = set(re.findall(r'[a-z]+', text_lower))
     for contact in contacts:
         nickname = _normalize_name(contact.get('nickname', ''))
         real_name = _normalize_name(contact.get('real_name', ''))
@@ -1303,10 +1326,15 @@ def find_contact_in_text(user_phone: str, text: str):
             return contact
         if real_name and real_name in text_lower:
             return contact
-        # Match English relation words (e.g. "nephew") against a nickname
-        # saved in Hindi/Devanagari (e.g. "bhatija" / "भतीजा")
+        # Match a relation word/phrase (e.g. "nephew", "elder sister") or its
+        # romanized form (e.g. "akka") against a nickname saved in a native
+        # script (e.g. "bhatija"/"भतीजा" or "akka"/"అక్క").
         for english_word, native_forms in RELATION_TERMS.items():
-            if english_word in text_lower and (nickname in native_forms or real_name in native_forms):
+            if nickname not in native_forms and real_name not in native_forms:
+                continue
+            if english_word in text_lower:
+                return contact
+            if text_words & native_forms:
                 return contact
     return None
 
@@ -1372,14 +1400,25 @@ def extract_amount_fast(transcript: str):
 
 def extract_payment_intent_fast(transcript: str) -> dict:
     """Pull recipient/amount/reason from an English transcript via regex, with a Groq fallback."""
-    amount = extract_amount_fast(transcript)
-
     recipient = None
-    skip_words = {'the', 'a', 'an', 'send', 'pay', 'transfer', 'give', 'wire', 'rupees', 'rupee', 'rs'}
-    for word in re.findall(r'\b(?:to|for)\s+(?:my\s+)?([a-zA-Z]+)', transcript.lower()):
-        if word not in skip_words:
-            recipient = word
-            break
+    amount_text = transcript
+
+    # A spoken phone number (e.g. "...to the number 98765 43210") — grab the digit run.
+    digit_match = re.search(r'\d[\d\s]{7,}\d', transcript)
+    if digit_match:
+        recipient = re.sub(r'\s', '', digit_match.group())
+        # Strip the phone number out before amount extraction so its digits
+        # aren't mistaken for the rupee amount.
+        amount_text = transcript[:digit_match.start()] + transcript[digit_match.end():]
+
+    amount = extract_amount_fast(amount_text)
+
+    if not recipient:
+        skip_words = {'the', 'a', 'an', 'send', 'pay', 'transfer', 'give', 'wire', 'rupees', 'rupee', 'rs'}
+        for word in re.findall(r'\b(?:to|for)\s+(?:my\s+)?([a-zA-Z]+)', transcript.lower()):
+            if word not in skip_words:
+                recipient = word
+                break
 
     if recipient and amount is not None:
         return {"recipient": recipient, "amount": amount, "reason": None}
