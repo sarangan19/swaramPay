@@ -135,8 +135,12 @@ async def run_bot(websocket: WebSocket, stream_sid: str, call_sid: str, caller: 
         ),
     )
 
-    # --- STT (Sarvam saaras:v3, 16kHz after resampling) ---
-    stt = SarvamSTTService(
+    # --- STT (subclass to suppress broadcast_interruption causing disconnect) ---
+    class _SarvamSTT(SarvamSTTService):
+        async def broadcast_interruption(self):
+            pass  # prevent interruption from cascading to close the WebSocket
+
+    stt = _SarvamSTT(
         api_key=os.getenv("SARVAM_API_KEY"),
         sample_rate=16000,
         settings=SarvamSTTService.Settings(
@@ -361,6 +365,8 @@ async def websocket_endpoint(websocket: WebSocket):
     async for raw in websocket.iter_text():
         data = json.loads(raw)
         event = data.get("event")
+        if event not in ("media",):
+            print(f"[WS] event={event}")
         if event == "connected":
             continue
         if event == "start":
@@ -372,7 +378,12 @@ async def websocket_endpoint(websocket: WebSocket):
             print(f"[WS] stream_sid={stream_sid} call_sid={call_sid} caller='{caller}' custom={custom}")
             break
 
-    await run_bot(websocket, stream_sid, call_sid, caller)
+    try:
+        await run_bot(websocket, stream_sid, call_sid, caller)
+    except Exception as e:
+        import traceback
+        print(f"[BOT ERROR] {e.__class__.__name__}: {e}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
