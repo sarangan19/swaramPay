@@ -184,11 +184,8 @@ Accessible at `/companion` — a web dashboard for family members/guardians.
 
 Built for HackPrix Season 3.
 
-| Member | Role |
-|---|---|
-| Sarangan | Backend / IVR architecture |
-| Aryan Bharti | Voice biometrics & authentication |
-
+Sarangan
+Aryan Bharti 
 ---
 
 ## License
